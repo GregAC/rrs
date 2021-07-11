@@ -51,10 +51,34 @@ mod instruction_format {
             };
 
             IType {
-                imm: imm,
+                imm,
                 rs1: ((insn >> 15) & 0x1f) as usize,
                 funct3: (insn >> 12) & 0x7,
                 rd: ((insn >> 7) & 0x1f) as usize,
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub struct ITypeShamt {
+        pub funct7: u32,
+        pub shamt: u32,
+        pub rs1: usize,
+        pub funct3: u32,
+        pub rd: usize,
+    }
+
+    impl ITypeShamt {
+        pub fn new(insn: u32) -> ITypeShamt {
+            let itype = IType::new(insn);
+            let shamt = (itype.imm as u32) & 0x1f;
+
+            ITypeShamt {
+                funct7: (insn >> 25) & 0x7f,
+                shamt,
+                rs1: itype.rs1,
+                funct3: itype.funct3,
+                rd: itype.rd,
             }
         }
     }
@@ -89,8 +113,8 @@ mod instruction_format {
     #[derive(Debug, PartialEq)]
     pub struct BType {
         pub imm: i32,
-        pub rs2: u32,
-        pub rs1: u32,
+        pub rs2: usize,
+        pub rs1: usize,
         pub funct3: u32,
     }
 
@@ -109,8 +133,8 @@ mod instruction_format {
 
             BType {
                 imm: imm,
-                rs2: (insn >> 20) & 0x1f,
-                rs1: (insn >> 15) & 0x1f,
+                rs2: ((insn >> 20) & 0x1f) as usize,
+                rs1: ((insn >> 15) & 0x1f) as usize,
                 funct3: (insn >> 12) & 0x7,
             }
         }
@@ -119,14 +143,14 @@ mod instruction_format {
     #[derive(Debug, PartialEq)]
     pub struct UType {
         pub imm: i32,
-        pub rd: u32,
+        pub rd: usize,
     }
 
     impl UType {
         pub fn new(insn: u32) -> UType {
             UType {
                 imm: (insn & 0xffff_f000) as i32,
-                rd: (insn >> 7) & 0x1f,
+                rd: ((insn >> 7) & 0x1f) as usize,
             }
         }
     }
@@ -134,7 +158,7 @@ mod instruction_format {
     #[derive(Debug, PartialEq)]
     pub struct JType {
         pub imm: i32,
-        pub rd: u32,
+        pub rd: usize,
     }
 
     impl JType {
@@ -150,7 +174,7 @@ mod instruction_format {
 
             JType {
                 imm: imm,
-                rd: (insn >> 7) & 0x1f,
+                rd: ((insn >> 7) & 0x1f) as usize,
             }
         }
     }
@@ -169,18 +193,157 @@ pub trait InstructionProcessor {
     fn process_sra(&mut self, dec_insn: instruction_format::RType) -> Self::InstructionResult;
     fn process_or(&mut self, dec_insn: instruction_format::RType) -> Self::InstructionResult;
     fn process_and(&mut self, dec_insn: instruction_format::RType) -> Self::InstructionResult;
+
+    fn process_addi(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_slli(&mut self, dec_insn: instruction_format::ITypeShamt)
+        -> Self::InstructionResult;
+    fn process_slti(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_sltui(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_xori(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_srli(&mut self, dec_insn: instruction_format::ITypeShamt)
+        -> Self::InstructionResult;
+    fn process_srai(&mut self, dec_insn: instruction_format::ITypeShamt)
+        -> Self::InstructionResult;
+    fn process_ori(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_andi(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+
+    fn process_lui(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult;
+    fn process_auipc(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult;
+
+    fn process_beq(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult;
+    fn process_bne(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult;
+    fn process_blt(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult;
+    fn process_bltu(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult;
+    fn process_bge(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult;
+    fn process_bgeu(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult;
+
+    fn process_lb(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_lbu(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_lh(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_lhu(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+    fn process_lw(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
+
+    fn process_sb(&mut self, dec_insn: instruction_format::SType) -> Self::InstructionResult;
+    fn process_sh(&mut self, dec_insn: instruction_format::SType) -> Self::InstructionResult;
+    fn process_sw(&mut self, dec_insn: instruction_format::SType) -> Self::InstructionResult;
+
+    fn process_jal(&mut self, dec_insn: instruction_format::JType) -> Self::InstructionResult;
+    fn process_jalr(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult;
 }
 
-pub struct InstructionStringOutputter {}
+pub struct InstructionStringOutputter {
+    pub insn_pc: u32,
+}
 
 use paste::paste;
+
+// TODO: Implement display for instruction formats then make generic string out macro that takes an
+// instruction format type, have generic function for actual output? Macro just a convenience for
+// avoiding too much boiler plate?
+macro_rules! string_out_for_alu_reg_op {
+    ($name:ident) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_format::RType
+            ) -> Self::InstructionResult {
+                format!("{} x{}, x{}, x{}", stringify!($name), dec_insn.rd, dec_insn.rs1,
+                    dec_insn.rs2)
+            }
+        }
+    };
+}
+
+macro_rules! string_out_for_alu_imm_op {
+    ($name:ident) => {
+        paste! {
+            fn [<process_ $name i>](
+                &mut self,
+                dec_insn: instruction_format::IType
+            ) -> Self::InstructionResult {
+                format!("{} x{}, x{}, x{}", stringify!($name), dec_insn.rd, dec_insn.rs1,
+                    dec_insn.imm)
+            }
+        }
+    };
+}
+
+macro_rules! string_out_for_alu_imm_shamt_op {
+    ($name:ident) => {
+        paste! {
+            fn [<process_ $name i>](
+                &mut self,
+                dec_insn: instruction_format::ITypeShamt
+            ) -> Self::InstructionResult {
+                format!("{} x{}, x{}, x{}", stringify!($name), dec_insn.rd, dec_insn.rs1,
+                    dec_insn.shamt)
+            }
+        }
+    };
+}
 
 macro_rules! string_out_for_alu_ops {
     ($($name:ident),*) => {
         $(
+            string_out_for_alu_reg_op! {$name}
+            string_out_for_alu_imm_op! {$name}
+        )*
+    }
+}
+
+macro_rules! string_out_for_shift_ops {
+    ($($name:ident),*) => {
+        $(
+            string_out_for_alu_reg_op! {$name}
+            string_out_for_alu_imm_shamt_op! {$name}
+        )*
+    }
+}
+
+macro_rules! string_out_for_branch_ops {
+    ($($name:ident),*) => {
+        $(
             paste! {
-                fn [<process_ $name>](&mut self, dec_insn: instruction_format::RType) -> Self::InstructionResult {
-                    format!("{} x{}, x{}, x{}", stringify!($name), dec_insn.rd, dec_insn.rs1, dec_insn.rs2)
+                fn [<process_ $name>](
+                    &mut self,
+                    dec_insn: instruction_format::BType
+                ) -> Self::InstructionResult {
+                    let branch_pc = self.insn_pc.wrapping_add(dec_insn.imm as u32);
+
+                    format!("{} x{}, x{}, {:08x}", stringify!($name), dec_insn.rs1, dec_insn.rs2,
+                        branch_pc)
+                }
+            }
+        )*
+    }
+}
+
+macro_rules! string_out_for_load_ops {
+    ($($name:ident),*) => {
+        $(
+            paste! {
+                fn [<process_ $name>](
+                    &mut self,
+                    dec_insn: instruction_format::IType
+                ) -> Self::InstructionResult {
+                    format!("{} x{}, {}(x{})", stringify!($name), dec_insn.rd, dec_insn.imm,
+                        dec_insn.rs1)
+                }
+            }
+        )*
+    }
+}
+
+macro_rules! string_out_for_store_ops {
+    ($($name:ident),*) => {
+        $(
+            paste! {
+                fn [<process_ $name>](
+                    &mut self,
+                    dec_insn: instruction_format::SType
+                ) -> Self::InstructionResult {
+                    format!("{} x{}, {}(x{})", stringify!($name), dec_insn.rs2, dec_insn.imm,
+                        dec_insn.rs1)
                 }
             }
         )*
@@ -192,7 +355,32 @@ impl InstructionProcessor for InstructionStringOutputter {
 
     // TODO: Make one macro that takes all names as arguments and generates all the functions
     // together
-    string_out_for_alu_ops! {add, sub, sll, slt, sltu, xor, srl, sra, or, and}
+    string_out_for_alu_ops! {add, slt, sltu, xor, or, and}
+    string_out_for_alu_reg_op! {sub}
+    string_out_for_shift_ops! {sll, srl, sra}
+
+    fn process_lui(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
+        let shifted_imm = (dec_insn.imm as u32) << 12;
+        format!("lui x{}, 0x{:08x}", dec_insn.rd, shifted_imm)
+    }
+
+    fn process_auipc(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
+        let final_imm = self.insn_pc.wrapping_add(dec_insn.imm as u32);
+        format!("auipc x{}, 0x{:08x}", dec_insn.rd, final_imm)
+    }
+
+    string_out_for_branch_ops! {beq, bne, bge, bgeu, blt, bltu}
+    string_out_for_load_ops! {lb, lbu, lh, lhu, lw}
+    string_out_for_store_ops! {sb, sh, sw}
+
+    fn process_jal(&mut self, dec_insn: instruction_format::JType) -> Self::InstructionResult {
+        let target_pc = self.insn_pc.wrapping_add(dec_insn.imm as u32);
+        format!("jal x{}, 0x{:08x}", dec_insn.rd, target_pc)
+    }
+
+    fn process_jalr(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        format!("jalr x{}, x{}, {}", dec_insn.rd, dec_insn.rs1, dec_insn.imm)
+    }
 }
 
 fn process_opcode_op<T: InstructionProcessor>(
@@ -240,6 +428,79 @@ fn process_opcode_op<T: InstructionProcessor>(
     }
 }
 
+fn process_opcode_op_imm<T: InstructionProcessor>(
+    processor: &mut T,
+    insn_bits: u32,
+) -> Option<T::InstructionResult> {
+    let dec_insn = instruction_format::IType::new(insn_bits);
+
+    match dec_insn.funct3 {
+        0b000 => Some(processor.process_addi(dec_insn)),
+        0b001 => Some(processor.process_slli(instruction_format::ITypeShamt::new(insn_bits))),
+        0b010 => Some(processor.process_slti(dec_insn)),
+        0b011 => Some(processor.process_sltui(dec_insn)),
+        0b100 => Some(processor.process_xori(dec_insn)),
+        0b101 => {
+            let dec_insn_shamt = instruction_format::ITypeShamt::new(insn_bits);
+            match dec_insn_shamt.funct7 {
+                0b000_0000 => Some(processor.process_srli(dec_insn_shamt)),
+                0b010_0000 => Some(processor.process_srai(dec_insn_shamt)),
+                _ => None,
+            }
+        }
+        0b110 => Some(processor.process_ori(dec_insn)),
+        0b111 => Some(processor.process_andi(dec_insn)),
+        _ => None,
+    }
+}
+
+fn process_opcode_branch<T: InstructionProcessor>(
+    processor: &mut T,
+    insn_bits: u32,
+) -> Option<T::InstructionResult> {
+    let dec_insn = instruction_format::BType::new(insn_bits);
+
+    match dec_insn.funct3 {
+        0b000 => Some(processor.process_beq(dec_insn)),
+        0b001 => Some(processor.process_bne(dec_insn)),
+        0b100 => Some(processor.process_blt(dec_insn)),
+        0b101 => Some(processor.process_bge(dec_insn)),
+        0b110 => Some(processor.process_bltu(dec_insn)),
+        0b111 => Some(processor.process_bgeu(dec_insn)),
+        _ => None,
+    }
+}
+
+fn process_opcode_load<T: InstructionProcessor>(
+    processor: &mut T,
+    insn_bits: u32,
+) -> Option<T::InstructionResult> {
+    let dec_insn = instruction_format::IType::new(insn_bits);
+
+    match dec_insn.funct3 {
+        0b000 => Some(processor.process_lb(dec_insn)),
+        0b001 => Some(processor.process_lh(dec_insn)),
+        0b010 => Some(processor.process_lw(dec_insn)),
+        0b100 => Some(processor.process_lbu(dec_insn)),
+        0b101 => Some(processor.process_lhu(dec_insn)),
+        _ => None,
+    }
+}
+
+fn process_opcode_store<T: InstructionProcessor>(
+    processor: &mut T,
+    insn_bits: u32,
+) -> Option<T::InstructionResult> {
+    let dec_insn = instruction_format::SType::new(insn_bits);
+
+    match dec_insn.funct3 {
+        0b000 => Some(processor.process_sb(dec_insn)),
+        0b001 => Some(processor.process_sh(dec_insn)),
+        0b010 => Some(processor.process_sw(dec_insn)),
+        _ => None,
+    }
+}
+
 pub fn process_instruction<T: InstructionProcessor>(
     processor: &mut T,
     insn_bits: u32,
@@ -248,6 +509,22 @@ pub fn process_instruction<T: InstructionProcessor>(
 
     match opcode {
         instruction_format::OPCODE_OP => process_opcode_op(processor, insn_bits),
+        instruction_format::OPCODE_OP_IMM => process_opcode_op_imm(processor, insn_bits),
+        instruction_format::OPCODE_LUI => {
+            Some(processor.process_lui(instruction_format::UType::new(insn_bits)))
+        }
+        instruction_format::OPCODE_AUIPC => {
+            Some(processor.process_auipc(instruction_format::UType::new(insn_bits)))
+        }
+        instruction_format::OPCODE_BRANCH => process_opcode_branch(processor, insn_bits),
+        instruction_format::OPCODE_LOAD => process_opcode_load(processor, insn_bits),
+        instruction_format::OPCODE_STORE => process_opcode_store(processor, insn_bits),
+        instruction_format::OPCODE_JAL => {
+            Some(processor.process_jal(instruction_format::JType::new(insn_bits)))
+        }
+        instruction_format::OPCODE_JALR => {
+            Some(processor.process_jalr(instruction_format::IType::new(insn_bits)))
+        }
         _ => None,
     }
 }
@@ -266,8 +543,26 @@ impl HartState {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum MemAccessSize {
+    Byte,     // 8 bits
+    HalfWord, // 16 bits
+    Word,     // 32 bits
+}
+
 pub trait Memory {
-    fn read_mem(&mut self, addr: u32) -> Option<u32>;
+    fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32>;
+    fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool;
+}
+
+#[derive(Debug, PartialEq)]
+pub enum InstructionException {
+    // TODO: Better to name the fields?
+    IllegalInstruction(u32, u32),
+    FetchError(u32),
+    LoadAccessFault(u32),
+    StoreAccessFault(u32),
+    AlignmentFault(u32),
 }
 
 pub struct InstructionExecutor<'a, M: Memory> {
@@ -295,54 +590,285 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         let result = op(a, b);
         self.hart_state.registers[dec_insn.rd] = result;
     }
-}
 
-#[derive(Debug, PartialEq)]
-pub enum InstructionException {
-    // TODO: Better to name the fields?
-    IllegalInstruction(u32, u32),
-    FetchError(u32),
-}
+    fn execute_reg_imm_shamt_op<F>(&mut self, dec_insn: instruction_format::ITypeShamt, op: F)
+    where
+        F: Fn(u32, u32) -> u32,
+    {
+        let a = self.hart_state.registers[dec_insn.rs1];
+        let result = op(a, dec_insn.shamt);
+        self.hart_state.registers[dec_insn.rd] = result;
+    }
 
-macro_rules! make_op_fn {
-    ($name:ident, $op_fn:expr) => {
-        paste! {
-            fn [<process_ $name>](&mut self, dec_insn: instruction_format::RType) -> Self::InstructionResult {
-                self.execute_reg_reg_op(dec_insn, $op_fn);
+    fn execute_branch<F>(&mut self, dec_insn: instruction_format::BType, cond: F) -> bool
+    where
+        F: Fn(u32, u32) -> bool,
+    {
+        let a = self.hart_state.registers[dec_insn.rs1];
+        let b = self.hart_state.registers[dec_insn.rs1];
 
-                Ok(None)
+        if cond(a, b) {
+            let new_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
+            self.hart_state.pc = new_pc;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn execute_load(
+        &mut self,
+        dec_insn: instruction_format::IType,
+        size: MemAccessSize,
+        signed: bool,
+    ) -> Result<(), InstructionException> {
+        let addr = self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
+
+        let align_mask = match size {
+            MemAccessSize::Byte => 0x0,
+            MemAccessSize::HalfWord => 0x1,
+            MemAccessSize::Word => 0x3,
+        };
+
+        if (addr & align_mask) != 0x0 {
+            return Err(InstructionException::AlignmentFault(addr));
+        }
+
+        let mut load_data = match self.mem.read_mem(addr, size) {
+            Some(d) => d,
+            None => {
+                return Err(InstructionException::LoadAccessFault(addr));
             }
+        };
+
+        if signed {
+            load_data = (match size {
+                MemAccessSize::Byte => (load_data as i8) as i32,
+                MemAccessSize::HalfWord => (load_data as i16) as i32,
+                MemAccessSize::Word => load_data as i32,
+            }) as u32;
+        }
+
+        self.hart_state.registers[dec_insn.rd] = load_data;
+        Ok(())
+    }
+
+    fn execute_store(
+        &mut self,
+        dec_insn: instruction_format::SType,
+        size: MemAccessSize,
+    ) -> Result<(), InstructionException> {
+        let addr = self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
+        let data = self.hart_state.registers[dec_insn.rs2];
+
+        let align_mask = match size {
+            MemAccessSize::Byte => 0x0,
+            MemAccessSize::HalfWord => 0x1,
+            MemAccessSize::Word => 0x3,
+        };
+
+        if (addr & align_mask) != 0x0 {
+            return Err(InstructionException::AlignmentFault(addr));
+        }
+
+        if self.mem.write_mem(addr, size, data) {
+            Ok(())
+        } else {
+            Err(InstructionException::StoreAccessFault(addr))
         }
     }
 }
 
-impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
-    type InstructionResult = Result<Option<u32>, InstructionException>;
+macro_rules! make_alu_op_reg_fn {
+    ($name:ident, $op_fn:expr) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_format::RType
+            ) -> Self::InstructionResult {
+                self.execute_reg_reg_op(dec_insn, $op_fn);
 
-    make_op_fn! {add, |a, b| a.wrapping_add(b)}
-    make_op_fn! {sub, |a, b| b.wrapping_sub(b)}
-    make_op_fn! {slt, |a, b| if (a as i32) < (b as i32) {1} else {0}}
-    make_op_fn! {sltu, |a, b| if a < b {1} else {0}}
-    make_op_fn! {sll, |a, b| a << b}
-    make_op_fn! {srl, |a, b| a >> b}
-    make_op_fn! {sra, |a, b| ((a as i32) >> b) as u32}
-    make_op_fn! {or, |a, b| a | b}
-    make_op_fn! {and, |a, b| a & b}
-    make_op_fn! {xor, |a, b| a ^ b}
+                Ok(false)
+            }
+        }
+    };
+}
+
+macro_rules! make_alu_op_imm_fn {
+    ($name:ident, $op_fn:expr) => {
+        paste! {
+            fn [<process_ $name i>](
+                &mut self,
+                dec_insn: instruction_format::IType
+            ) -> Self::InstructionResult {
+                self.execute_reg_imm_op(dec_insn, $op_fn);
+
+                Ok(false)
+            }
+        }
+    };
+}
+
+macro_rules! make_alu_op_imm_shamt_fn {
+    ($name:ident, $op_fn:expr) => {
+        paste! {
+            fn [<process_ $name i>](
+                &mut self,
+                dec_insn: instruction_format::ITypeShamt
+            ) -> Self::InstructionResult {
+                self.execute_reg_imm_shamt_op(dec_insn, $op_fn);
+
+                Ok(false)
+            }
+        }
+    };
+}
+
+macro_rules! make_alu_op_fns {
+    ($name:ident, $op_fn:expr) => {
+        make_alu_op_reg_fn! {$name, $op_fn}
+        make_alu_op_imm_fn! {$name, $op_fn}
+    };
+}
+
+macro_rules! make_shift_op_fns {
+    ($name:ident, $op_fn:expr) => {
+        make_alu_op_reg_fn! {$name, $op_fn}
+        make_alu_op_imm_shamt_fn! {$name, $op_fn}
+    };
+}
+
+impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
+    type InstructionResult = Result<bool, InstructionException>;
+
+    make_alu_op_fns! {add, |a, b| a.wrapping_add(b)}
+    make_alu_op_reg_fn! {sub, |a, b| a.wrapping_sub(b)}
+    make_alu_op_fns! {slt, |a, b| if (a as i32) < (b as i32) {1} else {0}}
+    make_alu_op_fns! {sltu, |a, b| if a < b {1} else {0}}
+    make_alu_op_fns! {or, |a, b| a | b}
+    make_alu_op_fns! {and, |a, b| a & b}
+    make_alu_op_fns! {xor, |a, b| a ^ b}
+
+    make_shift_op_fns! {sll, |a, b| a << b}
+    make_shift_op_fns! {srl, |a, b| a >> b}
+    make_shift_op_fns! {sra, |a, b| ((a as i32) >> b) as u32}
+
+    fn process_lui(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
+        let result = (dec_insn.imm as u32) << 12;
+        self.hart_state.registers[dec_insn.rd] = result;
+
+        Ok(false)
+    }
+
+    fn process_auipc(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
+        let result = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
+        self.hart_state.registers[dec_insn.rd] = result;
+
+        Ok(false)
+    }
+
+    fn process_beq(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
+        Ok(self.execute_branch(dec_insn, |a, b| a == b))
+    }
+
+    fn process_bne(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
+        Ok(self.execute_branch(dec_insn, |a, b| a == b))
+    }
+
+    fn process_blt(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
+        Ok(self.execute_branch(dec_insn, |a, b| (a as i32) < (b as i32)))
+    }
+
+    fn process_bltu(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
+        Ok(self.execute_branch(dec_insn, |a, b| a < b))
+    }
+
+    fn process_bge(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
+        Ok(self.execute_branch(dec_insn, |a, b| (a as i32) >= (b as i32)))
+    }
+
+    fn process_bgeu(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
+        Ok(self.execute_branch(dec_insn, |a, b| a >= b))
+    }
+
+    fn process_lb(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        self.execute_load(dec_insn, MemAccessSize::Byte, true)?;
+
+        Ok(false)
+    }
+
+    fn process_lbu(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        self.execute_load(dec_insn, MemAccessSize::Byte, false)?;
+
+        Ok(false)
+    }
+
+    fn process_lh(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        self.execute_load(dec_insn, MemAccessSize::HalfWord, true)?;
+
+        Ok(false)
+    }
+
+    fn process_lhu(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        self.execute_load(dec_insn, MemAccessSize::HalfWord, false)?;
+
+        Ok(false)
+    }
+
+    fn process_lw(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        self.execute_load(dec_insn, MemAccessSize::Word, false)?;
+
+        Ok(false)
+    }
+
+    fn process_sb(&mut self, dec_insn: instruction_format::SType) -> Self::InstructionResult {
+        self.execute_store(dec_insn, MemAccessSize::Byte)?;
+
+        Ok(false)
+    }
+
+    fn process_sh(&mut self, dec_insn: instruction_format::SType) -> Self::InstructionResult {
+        self.execute_store(dec_insn, MemAccessSize::HalfWord)?;
+
+        Ok(false)
+    }
+
+    fn process_sw(&mut self, dec_insn: instruction_format::SType) -> Self::InstructionResult {
+        self.execute_store(dec_insn, MemAccessSize::Word)?;
+
+        Ok(false)
+    }
+
+    fn process_jal(&mut self, dec_insn: instruction_format::JType) -> Self::InstructionResult {
+        let target_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
+        self.hart_state.registers[dec_insn.rd] = self.hart_state.pc + 4;
+        self.hart_state.pc = target_pc;
+
+        Ok(true)
+    }
+
+    fn process_jalr(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        let mut target_pc =
+            self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
+        target_pc &= 0xfffffffe;
+
+        self.hart_state.registers[dec_insn.rd] = self.hart_state.pc + 4;
+        self.hart_state.pc = target_pc;
+
+        Ok(true)
+    }
 }
 
 impl<'a, M: Memory> InstructionExecutor<'a, M> {
     fn step(&mut self) -> Result<(), InstructionException> {
-        if let Some(next_insn) = self.mem.read_mem(self.hart_state.pc) {
+        if let Some(next_insn) = self.mem.read_mem(self.hart_state.pc, MemAccessSize::Word) {
             let step_result = process_instruction(self, next_insn);
 
             match step_result {
-                Some(Ok(None)) => {
-                    self.hart_state.pc = self.hart_state.pc + 4;
-                    Ok(())
-                }
-                Some(Ok(Some(next_pc))) => {
-                    self.hart_state.pc = next_pc;
+                Some(Ok(pc_updated)) => {
+                    if !pc_updated {
+                        self.hart_state.pc = self.hart_state.pc + 4;
+                    }
                     Ok(())
                 }
                 Some(Err(e)) => Err(e),
@@ -419,6 +945,45 @@ mod tests {
                 rs1: 7,
                 funct3: 0b110,
                 rd: 13
+            }
+        );
+    }
+
+    #[test]
+    fn test_itype_shamt() {
+        // slli x12, x5, 13
+        assert_eq!(
+            instruction_format::ITypeShamt::new(0x00d29613),
+            instruction_format::ITypeShamt {
+                funct7: 0,
+                shamt: 13,
+                rs1: 5,
+                funct3: 0b001,
+                rd: 12
+            }
+        );
+
+        // srli x30, x19, 31
+        assert_eq!(
+            instruction_format::ITypeShamt::new(0x01f9df13),
+            instruction_format::ITypeShamt {
+                funct7: 0,
+                shamt: 31,
+                rs1: 19,
+                funct3: 0b101,
+                rd: 30
+            }
+        );
+
+        // srai x7, x23, 0
+        assert_eq!(
+            instruction_format::ITypeShamt::new(0x400bd393),
+            instruction_format::ITypeShamt {
+                funct7: 0b0100000,
+                shamt: 0,
+                rs1: 23,
+                funct3: 0b101,
+                rd: 7
             }
         );
     }
@@ -635,7 +1200,7 @@ mod tests {
 
     #[test]
     fn test_insn_string_output() {
-        let mut outputter = InstructionStringOutputter {};
+        let mut outputter = InstructionStringOutputter { insn_pc: 0 };
 
         let test_insn: u32 = 0x009607b3;
 
@@ -658,8 +1223,45 @@ mod tests {
     }
 
     impl Memory for TestMemory {
-        fn read_mem(&mut self, addr: u32) -> Option<u32> {
-            self.mem.get(addr as usize).copied()
+        fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32> {
+            let (shift, mask) = match size {
+                MemAccessSize::Byte => (addr & 0x3, 0xff),
+                MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
+                MemAccessSize::Word => (0, 0xffffffff),
+            };
+
+            if (addr & 0x3) != shift {
+                panic!("Memory read must be aligned");
+            }
+
+            let word_addr = addr >> 2;
+
+            let read_data = self.mem.get(word_addr as usize).copied()?;
+
+            Some((read_data >> shift) & mask)
+        }
+
+        fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool {
+            let (shift, mask) = match size {
+                MemAccessSize::Byte => (addr & 0x3, 0xff),
+                MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
+                MemAccessSize::Word => (0, 0xffffffff),
+            };
+
+            if (addr & 0x3) != shift {
+                panic!("Memory write must be aligned");
+            }
+
+            let write_mask = !(mask << shift);
+
+            let word_addr = addr >> 2;
+
+            if let Some(update_data) = self.mem.get(word_addr as usize) {
+                self.mem[word_addr as usize] = (update_data & write_mask) | (store_data << shift);
+                true
+            } else {
+                false
+            }
         }
     }
 
