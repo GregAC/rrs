@@ -129,8 +129,6 @@ mod instruction_format {
                 uimm
             };
 
-            println!("imm: {}", imm);
-
             BType {
                 imm: imm,
                 rs2: ((insn >> 20) & 0x1f) as usize,
@@ -261,7 +259,7 @@ macro_rules! string_out_for_alu_imm_op {
                 &mut self,
                 dec_insn: instruction_format::IType
             ) -> Self::InstructionResult {
-                format!("{} x{}, x{}, x{}", stringify!($name), dec_insn.rd, dec_insn.rs1,
+                format!("{}i x{}, x{}, {}", stringify!($name), dec_insn.rd, dec_insn.rs1,
                     dec_insn.imm)
             }
         }
@@ -275,7 +273,7 @@ macro_rules! string_out_for_alu_imm_shamt_op {
                 &mut self,
                 dec_insn: instruction_format::ITypeShamt
             ) -> Self::InstructionResult {
-                format!("{} x{}, x{}, x{}", stringify!($name), dec_insn.rd, dec_insn.rs1,
+                format!("{}i x{}, x{}, {}", stringify!($name), dec_insn.rd, dec_insn.rs1,
                     dec_insn.shamt)
             }
         }
@@ -310,7 +308,7 @@ macro_rules! string_out_for_branch_ops {
                 ) -> Self::InstructionResult {
                     let branch_pc = self.insn_pc.wrapping_add(dec_insn.imm as u32);
 
-                    format!("{} x{}, x{}, {:08x}", stringify!($name), dec_insn.rs1, dec_insn.rs2,
+                    format!("{} x{}, x{}, 0x{:08x}", stringify!($name), dec_insn.rs1, dec_insn.rs2,
                         branch_pc)
                 }
             }
@@ -355,13 +353,17 @@ impl InstructionProcessor for InstructionStringOutputter {
 
     // TODO: Make one macro that takes all names as arguments and generates all the functions
     // together
-    string_out_for_alu_ops! {add, slt, sltu, xor, or, and}
+    string_out_for_alu_ops! {add, slt, xor, or, and}
+    string_out_for_alu_reg_op! {sltu}
     string_out_for_alu_reg_op! {sub}
     string_out_for_shift_ops! {sll, srl, sra}
 
+    fn process_sltui(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
+        format!("sltiu x{}, x{}, {}", dec_insn.rd, dec_insn.rs1, dec_insn.imm)
+    }
+
     fn process_lui(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
-        let shifted_imm = (dec_insn.imm as u32) << 12;
-        format!("lui x{}, 0x{:08x}", dec_insn.rd, shifted_imm)
+        format!("lui x{}, 0x{:08x}", dec_insn.rd, dec_insn.imm)
     }
 
     fn process_auipc(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
@@ -379,7 +381,7 @@ impl InstructionProcessor for InstructionStringOutputter {
     }
 
     fn process_jalr(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
-        format!("jalr x{}, x{}, {}", dec_insn.rd, dec_insn.rs1, dec_insn.imm)
+        format!("jalr x{}, 0x{:03x}(x{})", dec_insn.rd, dec_insn.imm, dec_insn.rs1)
     }
 }
 
@@ -555,6 +557,62 @@ pub trait Memory {
     fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool;
 }
 
+pub struct VecMemory {
+    pub mem: Vec<u32>,
+}
+
+impl VecMemory {
+    pub fn new(init_mem: Vec<u32> ) -> VecMemory {
+        VecMemory {
+            mem: init_mem
+        }
+    }
+}
+
+impl Memory for VecMemory {
+    fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32> {
+        let (shift, mask) = match size {
+            MemAccessSize::Byte => (addr & 0x3, 0xff),
+            MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
+            MemAccessSize::Word => (0, 0xffffffff),
+        };
+
+        if (addr & 0x3) != shift {
+            panic!("Memory read must be aligned");
+        }
+
+        let word_addr = addr >> 2;
+
+        let read_data = self.mem.get(word_addr as usize).copied()?;
+
+        Some((read_data >> (shift * 8)) & mask)
+    }
+
+    fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool {
+        let (shift, mask) = match size {
+            MemAccessSize::Byte => (addr & 0x3, 0xff),
+            MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
+            MemAccessSize::Word => (0, 0xffffffff),
+        };
+
+        if (addr & 0x3) != shift {
+            panic!("Memory write must be aligned");
+        }
+
+        let write_mask = !(mask << (shift * 8));
+
+        let word_addr = (addr >> 2) as usize;
+
+        if let Some(update_data) = self.mem.get(word_addr) {
+            let new = (update_data & write_mask) | ((store_data & mask) << (shift * 8));
+            self.mem[word_addr] = new;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum InstructionException {
     // TODO: Better to name the fields?
@@ -605,7 +663,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         F: Fn(u32, u32) -> bool,
     {
         let a = self.hart_state.registers[dec_insn.rs1];
-        let b = self.hart_state.registers[dec_insn.rs1];
+        let b = self.hart_state.registers[dec_insn.rs2];
 
         if cond(a, b) {
             let new_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
@@ -754,8 +812,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     make_shift_op_fns! {sra, |a, b| ((a as i32) >> b) as u32}
 
     fn process_lui(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
-        let result = (dec_insn.imm as u32) << 12;
-        self.hart_state.registers[dec_insn.rd] = result;
+        self.hart_state.registers[dec_insn.rd] = dec_insn.imm as u32;
 
         Ok(false)
     }
@@ -763,6 +820,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     fn process_auipc(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
         let result = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
         self.hart_state.registers[dec_insn.rd] = result;
+        println!("auipc {:x} {} = {:x}", dec_insn.imm as u32, dec_insn.rd, result);
 
         Ok(false)
     }
@@ -772,7 +830,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     }
 
     fn process_bne(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| a == b))
+        Ok(self.execute_branch(dec_insn, |a, b| a != b))
     }
 
     fn process_blt(&mut self, dec_insn: instruction_format::BType) -> Self::InstructionResult {
@@ -1202,76 +1260,290 @@ mod tests {
     fn test_insn_string_output() {
         let mut outputter = InstructionStringOutputter { insn_pc: 0 };
 
-        let test_insn: u32 = 0x009607b3;
+        let test_insns = vec![
+            0x07b60893, 0x24dba193, 0x06f63813, 0x14044f13, 0x7804e893, 0x1ea6fa13, 0x00511693,
+            0x00f45713, 0x417dd213, 0x01798733, 0x40e18ab3, 0x009e1533, 0x00c02fb3, 0x014ab933,
+            0x0175cd33, 0x014350b3, 0x41a753b3, 0x00566fb3, 0x01de7db3, 0xdeadb637, 0x00064897,
+            0x04c004ef, 0x100183e7, 0x04d38263, 0x05349063, 0x03774e63, 0x03dbdc63, 0x035e6a63,
+            0x0398f863, 0x04c18983, 0x07841b83, 0x1883a403, 0x03af4b03, 0x15acd883, 0x0d320923,
+            0x18061323, 0x0b382523,
+        ];
 
         assert_eq!(
-            process_instruction(&mut outputter, test_insn),
-            Some(String::from("add x15, x12, x9"))
+            process_instruction(&mut outputter, test_insns[0]),
+            Some(String::from("addi x17, x12, 123"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[1]),
+            Some(String::from("slti x3, x23, 589"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[2]),
+            Some(String::from("sltiu x16, x12, 111"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[3]),
+            Some(String::from("xori x30, x8, 320"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[4]),
+            Some(String::from("ori x17, x9, 1920"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[5]),
+            Some(String::from("andi x20, x13, 490"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[6]),
+            Some(String::from("slli x13, x2, 5"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[7]),
+            Some(String::from("srli x14, x8, 15"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[8]),
+            Some(String::from("srai x4, x27, 23"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[9]),
+            Some(String::from("add x14, x19, x23"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[10]),
+            Some(String::from("sub x21, x3, x14"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[11]),
+            Some(String::from("sll x10, x28, x9"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[12]),
+            Some(String::from("slt x31, x0, x12"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[13]),
+            Some(String::from("sltu x18, x21, x20"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[14]),
+            Some(String::from("xor x26, x11, x23"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[15]),
+            Some(String::from("srl x1, x6, x20"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[16]),
+            Some(String::from("sra x7, x14, x26"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[17]),
+            Some(String::from("or x31, x12, x5"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[18]),
+            Some(String::from("and x27, x28, x29"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[19]),
+            Some(String::from("lui x12, 0xdeadb000"))
+        );
+
+        outputter.insn_pc = 0x50;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[20]),
+            Some(String::from("auipc x17, 0x00064050"))
+        );
+
+        outputter.insn_pc = 0x54;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[21]),
+            Some(String::from("jal x9, 0x000000a0"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[22]),
+            Some(String::from("jalr x7, 0x100(x3)"))
+        );
+
+        outputter.insn_pc = 0x5c;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[23]),
+            Some(String::from("beq x7, x13, 0x000000a0"))
+        );
+
+        outputter.insn_pc = 0x60;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[24]),
+            Some(String::from("bne x9, x19, 0x000000a0"))
+        );
+
+        outputter.insn_pc = 0x64;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[25]),
+            Some(String::from("blt x14, x23, 0x000000a0"))
+        );
+
+        outputter.insn_pc = 0x68;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[26]),
+            Some(String::from("bge x23, x29, 0x000000a0"))
+        );
+
+        outputter.insn_pc = 0x6c;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[27]),
+            Some(String::from("bltu x28, x21, 0x000000a0"))
+        );
+
+        outputter.insn_pc = 0x70;
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[28]),
+            Some(String::from("bgeu x17, x25, 0x000000a0"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[29]),
+            Some(String::from("lb x19, 76(x3)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[30]),
+            Some(String::from("lh x23, 120(x8)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[31]),
+            Some(String::from("lw x8, 392(x7)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[32]),
+            Some(String::from("lbu x22, 58(x30)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[33]),
+            Some(String::from("lhu x17, 346(x25)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[34]),
+            Some(String::from("sb x19, 210(x4)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[35]),
+            Some(String::from("sh x0, 390(x12)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[36]),
+            Some(String::from("sw x19, 170(x16)"))
         );
     }
 
-    pub struct TestMemory {
-        pub mem: Vec<u32>,
-    }
+    #[test]
+    fn test_vec_memory() {
+        let mut test_mem = VecMemory::new(vec![0xdeadbeef, 0xbaadf00d]);
 
-    impl TestMemory {
-        pub fn new() -> TestMemory {
-            TestMemory {
-                mem: vec![0x009607b3, 0x0, 0x0, 0x0, 0x0],
-            }
-        }
-    }
+        assert_eq!(
+            test_mem.read_mem(0x0, MemAccessSize::Byte),
+            Some(0xef)
+        );
 
-    impl Memory for TestMemory {
-        fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32> {
-            let (shift, mask) = match size {
-                MemAccessSize::Byte => (addr & 0x3, 0xff),
-                MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
-                MemAccessSize::Word => (0, 0xffffffff),
-            };
+        assert_eq!(
+            test_mem.read_mem(0x5, MemAccessSize::Byte),
+            Some(0xf0)
+        );
 
-            if (addr & 0x3) != shift {
-                panic!("Memory read must be aligned");
-            }
+        assert_eq!(
+            test_mem.read_mem(0x6, MemAccessSize::HalfWord),
+            Some(0xbaad)
+        );
 
-            let word_addr = addr >> 2;
+        assert_eq!(
+            test_mem.read_mem(0x4, MemAccessSize::Word),
+            Some(0xbaadf00d)
+        );
 
-            let read_data = self.mem.get(word_addr as usize).copied()?;
+        assert_eq!(
+            test_mem.write_mem(0x7, MemAccessSize::Byte, 0xff),
+            true
+        );
 
-            Some((read_data >> shift) & mask)
-        }
+        assert_eq!(
+            test_mem.write_mem(0x2, MemAccessSize::HalfWord, 0xaaaaface),
+            true
+        );
 
-        fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool {
-            let (shift, mask) = match size {
-                MemAccessSize::Byte => (addr & 0x3, 0xff),
-                MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
-                MemAccessSize::Word => (0, 0xffffffff),
-            };
+        assert_eq!(
+            test_mem.write_mem(0x1, MemAccessSize::Byte, 0x1234abcd),
+            true
+        );
 
-            if (addr & 0x3) != shift {
-                panic!("Memory write must be aligned");
-            }
+        assert_eq!(
+            test_mem.read_mem(0x0, MemAccessSize::Word),
+            Some(0xfacecdef)
+        );
 
-            let write_mask = !(mask << shift);
-
-            let word_addr = addr >> 2;
-
-            if let Some(update_data) = self.mem.get(word_addr as usize) {
-                self.mem[word_addr as usize] = (update_data & write_mask) | (store_data << shift);
-                true
-            } else {
-                false
-            }
-        }
+        assert_eq!(
+            test_mem.read_mem(0x4, MemAccessSize::Word),
+            Some(0xffadf00d)
+        );
     }
 
     #[test]
     fn test_insn_execute() {
         let mut hart = HartState::new();
-        let mut mem = TestMemory::new();
+        let mut mem = VecMemory::new(vec![0x1234b137,
+            0xbcd10113,
+            0xf387e1b7,
+            0x3aa18193,
+            0xbed892b7,
+            0x7ac28293,
+            0x003100b3,
+            0xf4e0e213,
+            0x02120a63,
+            0x00121463,
+            0x1542c093,
+            0x00c0036f,
+            0x0020f0b3,
+            0x402080b3,
+            0x00000397,
+            0x02838393,
+            0x0003a403,
+            0x00638483,
+            0x0023d503,
+            0x00139223,
+            0x0043a583,
+            0x00000000,
+            0x00000000,
+            0x00000000,
+            0xdeadbeef,
+            0xbaadf00d
+            ]);
 
-        hart.registers[12] = 1;
-        hart.registers[9] = 2;
         hart.pc = 0;
 
         // TODO: With the 'executor' concept we need to effectively create a new one each step as
@@ -1284,14 +1556,29 @@ mod tests {
             mem: &mut mem,
         };
 
-        assert_eq!(executor.step(), Ok(()));
+        while executor.hart_state.pc != 0x54 {
+            let mut outputter = InstructionStringOutputter { insn_pc: executor.hart_state.pc };
+            let insn_bits = executor.mem.read_mem(executor.hart_state.pc, MemAccessSize::Word).unwrap();
+            println!("{:x} {}", executor.hart_state.pc, process_instruction(&mut outputter, insn_bits).unwrap());
+            assert_eq!(executor.step(), Ok(()));
+        }
 
-        assert_eq!(executor.hart_state.registers[15], 3);
+        assert_eq!(executor.hart_state.registers[1], 0x05bc8f77);
+        assert_eq!(executor.hart_state.registers[2], 0x1234abcd);
+        assert_eq!(executor.hart_state.registers[3], 0xf387e3aa);
+        assert_eq!(executor.hart_state.registers[4], 0xffffff7f);
+        assert_eq!(executor.hart_state.registers[5], 0xbed897ac);
+        assert_eq!(executor.hart_state.registers[6], 0x00000030);
+        assert_eq!(executor.hart_state.registers[7], 0x00000060);
+        assert_eq!(executor.hart_state.registers[8], 0xdeadbeef);
+        assert_eq!(executor.hart_state.registers[9], 0xffffffad);
+        assert_eq!(executor.hart_state.registers[10], 0x0000dead);
+        assert_eq!(executor.hart_state.registers[11], 0xbaad8f77);
 
-        //assert_eq!(executor.step(), Err(InstructionException::FetchError(4)));
+
         assert_eq!(
             executor.step(),
-            Err(InstructionException::IllegalInstruction(4, 0))
+            Err(InstructionException::IllegalInstruction(0x54, 0))
         );
     }
 }
