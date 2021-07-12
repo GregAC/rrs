@@ -534,6 +534,7 @@ pub fn process_instruction<T: InstructionProcessor>(
 pub struct HartState {
     pub registers: [u32; 32],
     pub pc: u32,
+    pub last_register_write: Option<usize>
 }
 
 impl HartState {
@@ -541,7 +542,17 @@ impl HartState {
         HartState {
             registers: [0; 32],
             pc: 0,
+            last_register_write: None
         }
+    }
+
+    fn write_register(&mut self, reg_index: usize, data: u32) {
+        if reg_index == 0 {
+            return;
+        }
+
+        self.registers[reg_index] = data;
+        self.last_register_write = Some(reg_index)
     }
 }
 
@@ -636,7 +647,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         let a = self.hart_state.registers[dec_insn.rs1];
         let b = self.hart_state.registers[dec_insn.rs2];
         let result = op(a, b);
-        self.hart_state.registers[dec_insn.rd] = result;
+        self.hart_state.write_register(dec_insn.rd, result);
     }
 
     fn execute_reg_imm_op<F>(&mut self, dec_insn: instruction_format::IType, op: F)
@@ -646,7 +657,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         let a = self.hart_state.registers[dec_insn.rs1];
         let b = dec_insn.imm as u32;
         let result = op(a, b);
-        self.hart_state.registers[dec_insn.rd] = result;
+        self.hart_state.write_register(dec_insn.rd, result);
     }
 
     fn execute_reg_imm_shamt_op<F>(&mut self, dec_insn: instruction_format::ITypeShamt, op: F)
@@ -655,7 +666,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     {
         let a = self.hart_state.registers[dec_insn.rs1];
         let result = op(a, dec_insn.shamt);
-        self.hart_state.registers[dec_insn.rd] = result;
+        self.hart_state.write_register(dec_insn.rd, result)
     }
 
     fn execute_branch<F>(&mut self, dec_insn: instruction_format::BType, cond: F) -> bool
@@ -707,7 +718,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
             }) as u32;
         }
 
-        self.hart_state.registers[dec_insn.rd] = load_data;
+        self.hart_state.write_register(dec_insn.rd, load_data);
         Ok(())
     }
 
@@ -812,15 +823,14 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     make_shift_op_fns! {sra, |a, b| ((a as i32) >> b) as u32}
 
     fn process_lui(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
-        self.hart_state.registers[dec_insn.rd] = dec_insn.imm as u32;
+        self.hart_state.write_register(dec_insn.rd, dec_insn.imm as u32);
 
         Ok(false)
     }
 
     fn process_auipc(&mut self, dec_insn: instruction_format::UType) -> Self::InstructionResult {
         let result = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
-        self.hart_state.registers[dec_insn.rd] = result;
-        println!("auipc {:x} {} = {:x}", dec_insn.imm as u32, dec_insn.rd, result);
+        self.hart_state.write_register(dec_insn.rd, result);
 
         Ok(false)
     }
@@ -899,7 +909,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
 
     fn process_jal(&mut self, dec_insn: instruction_format::JType) -> Self::InstructionResult {
         let target_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
-        self.hart_state.registers[dec_insn.rd] = self.hart_state.pc + 4;
+        self.hart_state.write_register(dec_insn.rd, self.hart_state.pc + 4);
         self.hart_state.pc = target_pc;
 
         Ok(true)
@@ -910,7 +920,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
             self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
         target_pc &= 0xfffffffe;
 
-        self.hart_state.registers[dec_insn.rd] = self.hart_state.pc + 4;
+        self.hart_state.write_register(dec_insn.rd, self.hart_state.pc + 4);
         self.hart_state.pc = target_pc;
 
         Ok(true)
@@ -919,6 +929,8 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
 
 impl<'a, M: Memory> InstructionExecutor<'a, M> {
     fn step(&mut self) -> Result<(), InstructionException> {
+        self.hart_state.last_register_write = None;
+
         if let Some(next_insn) = self.mem.read_mem(self.hart_state.pc, MemAccessSize::Word) {
             let step_result = process_instruction(self, next_insn);
 
@@ -1559,8 +1571,13 @@ mod tests {
         while executor.hart_state.pc != 0x54 {
             let mut outputter = InstructionStringOutputter { insn_pc: executor.hart_state.pc };
             let insn_bits = executor.mem.read_mem(executor.hart_state.pc, MemAccessSize::Word).unwrap();
-            println!("{:x} {}", executor.hart_state.pc, process_instruction(&mut outputter, insn_bits).unwrap());
+
             assert_eq!(executor.step(), Ok(()));
+
+            println!("{:x} {}", executor.hart_state.pc, process_instruction(&mut outputter, insn_bits).unwrap());
+            if let Some(reg_index) = executor.hart_state.last_register_write {
+                println!("x{} = {:08x}", reg_index, executor.hart_state.registers[reg_index]);
+            }
         }
 
         assert_eq!(executor.hart_state.registers[1], 0x05bc8f77);
