@@ -554,6 +554,14 @@ impl HartState {
         self.registers[reg_index] = data;
         self.last_register_write = Some(reg_index)
     }
+
+    fn read_register(&self, reg_index: usize) -> u32 {
+        if reg_index == 0 {
+            0
+        } else {
+            self.registers[reg_index]
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -644,8 +652,8 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     where
         F: Fn(u32, u32) -> u32,
     {
-        let a = self.hart_state.registers[dec_insn.rs1];
-        let b = self.hart_state.registers[dec_insn.rs2];
+        let a = self.hart_state.read_register(dec_insn.rs1);
+        let b = self.hart_state.read_register(dec_insn.rs2);
         let result = op(a, b);
         self.hart_state.write_register(dec_insn.rd, result);
     }
@@ -654,7 +662,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     where
         F: Fn(u32, u32) -> u32,
     {
-        let a = self.hart_state.registers[dec_insn.rs1];
+        let a = self.hart_state.read_register(dec_insn.rs1);
         let b = dec_insn.imm as u32;
         let result = op(a, b);
         self.hart_state.write_register(dec_insn.rd, result);
@@ -664,7 +672,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     where
         F: Fn(u32, u32) -> u32,
     {
-        let a = self.hart_state.registers[dec_insn.rs1];
+        let a = self.hart_state.read_register(dec_insn.rs1);
         let result = op(a, dec_insn.shamt);
         self.hart_state.write_register(dec_insn.rd, result)
     }
@@ -673,8 +681,8 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     where
         F: Fn(u32, u32) -> bool,
     {
-        let a = self.hart_state.registers[dec_insn.rs1];
-        let b = self.hart_state.registers[dec_insn.rs2];
+        let a = self.hart_state.read_register(dec_insn.rs1);
+        let b = self.hart_state.read_register(dec_insn.rs2);
 
         if cond(a, b) {
             let new_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
@@ -691,7 +699,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         size: MemAccessSize,
         signed: bool,
     ) -> Result<(), InstructionException> {
-        let addr = self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
+        let addr = self.hart_state.read_register(dec_insn.rs1).wrapping_add(dec_insn.imm as u32);
 
         let align_mask = match size {
             MemAccessSize::Byte => 0x0,
@@ -727,8 +735,8 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         dec_insn: instruction_format::SType,
         size: MemAccessSize,
     ) -> Result<(), InstructionException> {
-        let addr = self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
-        let data = self.hart_state.registers[dec_insn.rs2];
+        let addr = self.hart_state.read_register(dec_insn.rs1).wrapping_add(dec_insn.imm as u32);
+        let data = self.hart_state.read_register(dec_insn.rs2);
 
         let align_mask = match size {
             MemAccessSize::Byte => 0x0,
@@ -917,7 +925,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
 
     fn process_jalr(&mut self, dec_insn: instruction_format::IType) -> Self::InstructionResult {
         let mut target_pc =
-            self.hart_state.registers[dec_insn.rs1].wrapping_add(dec_insn.imm as u32);
+            self.hart_state.read_register(dec_insn.rs1).wrapping_add(dec_insn.imm as u32);
         target_pc &= 0xfffffffe;
 
         self.hart_state.write_register(dec_insn.rd, self.hart_state.pc + 4);
