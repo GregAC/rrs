@@ -4,6 +4,8 @@ mod instruction_string_outputter;
 mod memories;
 mod process_instruction;
 
+use downcast_rs::{impl_downcast, Downcast};
+
 pub use process_instruction::process_instruction;
 
 pub trait InstructionProcessor {
@@ -103,10 +105,12 @@ pub enum MemAccessSize {
     Word,     // 32 bits
 }
 
-pub trait Memory {
+pub trait Memory: Downcast {
     fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32>;
     fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool;
 }
+
+impl_downcast!(Memory);
 
 #[cfg(test)]
 mod tests {

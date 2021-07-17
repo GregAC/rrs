@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 paste = "1.0"
+downcast-rs = "1.2.0"
