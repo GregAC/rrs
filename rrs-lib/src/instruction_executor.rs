@@ -157,6 +157,10 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     }
 }
 
+fn sign_extend_u32(x: u32) -> i64 {
+    (x as i32) as i64
+}
+
 macro_rules! make_alu_op_reg_fn {
     ($name:ident, $op_fn:expr) => {
         paste! {
@@ -339,4 +343,14 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
 
         Ok(true)
     }
+
+    make_alu_op_reg_fn! {mul, |a, b| a.wrapping_mul(b)}
+    make_alu_op_reg_fn! {mulh, |a, b| (sign_extend_u32(a).wrapping_mul(sign_extend_u32(b)) >> 32) as u32}
+    make_alu_op_reg_fn! {mulhu, |a, b| (((a as u64).wrapping_mul(b as u64)) >> 32) as u32}
+    make_alu_op_reg_fn! {mulhsu, |a, b| (sign_extend_u32(a).wrapping_mul(b as i64) >> 32) as u32}
+
+    make_alu_op_reg_fn! {div, |a, b| if b == 0 {u32::MAX} else {((a as i32).wrapping_div(b as i32)) as u32}}
+    make_alu_op_reg_fn! {divu, |a, b| if b == 0 {u32::MAX} else {a / b}}
+    make_alu_op_reg_fn! {rem, |a, b| if b == 0 {a} else {((a as i32).wrapping_rem(b as i32)) as u32}}
+    make_alu_op_reg_fn! {remu, |a, b| if b == 0 {a} else {a % b}}
 }

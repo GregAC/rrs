@@ -160,6 +160,16 @@ impl InstructionProcessor for InstructionStringOutputter {
             dec_insn.rd, dec_insn.imm, dec_insn.rs1
         )
     }
+
+    string_out_for_alu_reg_op! {mul}
+    string_out_for_alu_reg_op! {mulh}
+    string_out_for_alu_reg_op! {mulhu}
+    string_out_for_alu_reg_op! {mulhsu}
+
+    string_out_for_alu_reg_op! {div}
+    string_out_for_alu_reg_op! {divu}
+    string_out_for_alu_reg_op! {rem}
+    string_out_for_alu_reg_op! {remu}
 }
 
 #[cfg(test)]
@@ -177,7 +187,8 @@ mod tests {
             0x0175cd33, 0x014350b3, 0x41a753b3, 0x00566fb3, 0x01de7db3, 0xdeadb637, 0x00064897,
             0x04c004ef, 0x100183e7, 0x04d38263, 0x05349063, 0x03774e63, 0x03dbdc63, 0x035e6a63,
             0x0398f863, 0x04c18983, 0x07841b83, 0x1883a403, 0x03af4b03, 0x15acd883, 0x0d320923,
-            0x18061323, 0x0b382523,
+            0x18061323, 0x0b382523, 0x034684b3, 0x03679f33, 0x0324bbb3, 0x03d9a233, 0x03f549b3,
+            0x02ee5133, 0x02a6e9b3, 0x02c976b3,
         ];
 
         assert_eq!(
@@ -371,6 +382,46 @@ mod tests {
         assert_eq!(
             process_instruction(&mut outputter, test_insns[36]),
             Some(String::from("sw x19, 170(x16)"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[37]),
+            Some(String::from("mul x9, x13, x20"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[38]),
+            Some(String::from("mulh x30, x15, x22"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[39]),
+            Some(String::from("mulhu x23, x9, x18"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[40]),
+            Some(String::from("mulhsu x4, x19, x29"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[41]),
+            Some(String::from("div x19, x10, x31"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[42]),
+            Some(String::from("divu x2, x28, x14"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[43]),
+            Some(String::from("rem x19, x13, x10"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[44]),
+            Some(String::from("remu x13, x18, x12"))
         );
     }
 }

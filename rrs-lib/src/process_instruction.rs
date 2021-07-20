@@ -10,36 +10,44 @@ fn process_opcode_op<T: InstructionProcessor>(
     match dec_insn.funct3 {
         0b000 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_add(dec_insn)),
+            0b000_0001 => Some(processor.process_mul(dec_insn)),
             0b010_0000 => Some(processor.process_sub(dec_insn)),
             _ => None,
         },
         0b001 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_sll(dec_insn)),
+            0b000_0001 => Some(processor.process_mulh(dec_insn)),
             _ => None,
         },
         0b010 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_slt(dec_insn)),
+            0b000_0001 => Some(processor.process_mulhsu(dec_insn)),
             _ => None,
         },
         0b011 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_sltu(dec_insn)),
+            0b000_0001 => Some(processor.process_mulhu(dec_insn)),
             _ => None,
         },
         0b100 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_xor(dec_insn)),
+            0b000_0001 => Some(processor.process_div(dec_insn)),
             _ => None,
         },
         0b101 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_srl(dec_insn)),
+            0b000_0001 => Some(processor.process_divu(dec_insn)),
             0b010_0000 => Some(processor.process_sra(dec_insn)),
             _ => None,
         },
         0b110 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_or(dec_insn)),
+            0b000_0001 => Some(processor.process_rem(dec_insn)),
             _ => None,
         },
         0b111 => match dec_insn.funct7 {
             0b000_0000 => Some(processor.process_and(dec_insn)),
+            0b000_0001 => Some(processor.process_remu(dec_insn)),
             _ => None,
         },
         _ => None,

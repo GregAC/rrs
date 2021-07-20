@@ -1,8 +1,8 @@
-mod instruction_executor;
-mod instruction_formats;
-mod instruction_string_outputter;
-mod memories;
-mod process_instruction;
+pub mod instruction_executor;
+pub mod instruction_formats;
+pub mod instruction_string_outputter;
+pub mod memories;
+pub mod process_instruction;
 
 use downcast_rs::{impl_downcast, Downcast};
 
@@ -63,6 +63,16 @@ pub trait InstructionProcessor {
 
     fn process_jal(&mut self, dec_insn: instruction_formats::JType) -> Self::InstructionResult;
     fn process_jalr(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult;
+
+    fn process_mul(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+    fn process_mulh(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+    fn process_mulhu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+    fn process_mulhsu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+
+    fn process_div(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+    fn process_divu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+    fn process_rem(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+    fn process_remu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
 }
 
 pub struct HartState {
@@ -72,7 +82,7 @@ pub struct HartState {
 }
 
 impl HartState {
-    fn new() -> Self {
+    pub fn new() -> Self {
         HartState {
             registers: [0; 32],
             pc: 0,
