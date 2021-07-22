@@ -158,6 +158,12 @@ impl MemorySpace {
     }
 }
 
+impl Default for MemorySpace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Memory for MemorySpace {
     fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32> {
         let memory_region = self.get_memory_region_by_addr(addr)?;
@@ -229,11 +235,11 @@ mod tests {
     struct TestMemory;
 
     impl Memory for TestMemory {
-        fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32> {
+        fn read_mem(&mut self, _addr: u32, _size: MemAccessSize) -> Option<u32> {
             Some(0x1234abcd)
         }
 
-        fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool {
+        fn write_mem(&mut self, _addr: u32, _size: MemAccessSize, _store_data: u32) -> bool {
             true
         }
     }

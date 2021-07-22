@@ -141,7 +141,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
             match step_result {
                 Some(Ok(pc_updated)) => {
                     if !pc_updated {
-                        self.hart_state.pc = self.hart_state.pc + 4;
+                        self.hart_state.pc += 4;
                     }
                     Ok(())
                 }

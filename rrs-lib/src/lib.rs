@@ -108,6 +108,12 @@ impl HartState {
     }
 }
 
+impl Default for HartState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum MemAccessSize {
     Byte,     // 8 bits

@@ -101,7 +101,7 @@ impl SType {
         };
 
         SType {
-            imm: imm,
+            imm,
             rs2: ((insn >> 20) & 0x1f) as usize,
             rs1: ((insn >> 15) & 0x1f) as usize,
             funct3: (insn >> 12) & 0x7,
@@ -129,7 +129,7 @@ impl BType {
         };
 
         BType {
-            imm: imm,
+            imm,
             rs2: ((insn >> 20) & 0x1f) as usize,
             rs1: ((insn >> 15) & 0x1f) as usize,
             funct3: (insn >> 12) & 0x7,
@@ -170,7 +170,7 @@ impl JType {
         };
 
         JType {
-            imm: imm,
+            imm,
             rd: ((insn >> 7) & 0x1f) as usize,
         }
     }

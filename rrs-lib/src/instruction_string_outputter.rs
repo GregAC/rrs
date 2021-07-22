@@ -6,9 +6,6 @@ pub struct InstructionStringOutputter {
     pub insn_pc: u32,
 }
 
-// TODO: Implement display for instruction formats then make generic string out macro that takes an
-// instruction format type, have generic function for actual output? Macro just a convenience for
-// avoiding too much boiler plate?
 macro_rules! string_out_for_alu_reg_op {
     ($name:ident) => {
         paste! {
@@ -20,6 +17,14 @@ macro_rules! string_out_for_alu_reg_op {
                     dec_insn.rs2)
             }
         }
+    };
+}
+
+macro_rules! string_out_for_alu_reg_ops {
+    ($($name:ident),*) => {
+        $(
+            string_out_for_alu_reg_op! {$name}
+        )*
     };
 }
 
@@ -161,15 +166,7 @@ impl InstructionProcessor for InstructionStringOutputter {
         )
     }
 
-    string_out_for_alu_reg_op! {mul}
-    string_out_for_alu_reg_op! {mulh}
-    string_out_for_alu_reg_op! {mulhu}
-    string_out_for_alu_reg_op! {mulhsu}
-
-    string_out_for_alu_reg_op! {div}
-    string_out_for_alu_reg_op! {divu}
-    string_out_for_alu_reg_op! {rem}
-    string_out_for_alu_reg_op! {remu}
+    string_out_for_alu_reg_ops! {mul, mulh, mulhu, mulhsu, div, divu, rem, remu}
 }
 
 #[cfg(test)]
