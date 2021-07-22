@@ -1,3 +1,7 @@
+// Copyright 2021 Gregory Chadwick <mail@gregchadwick.co.uk>
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+
 //! Structures and constants for instruction decoding
 //!
 //! The structures directly relate to the RISC-V instruction formats described in the

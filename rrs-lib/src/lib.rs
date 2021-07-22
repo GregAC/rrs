@@ -1,3 +1,7 @@
+// Copyright 2021 Gregory Chadwick <mail@gregchadwick.co.uk>
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+
 //! RISC-V instruction set simulator library
 //!
 //! Containts the building blocks for a RISC-V ISS. The seperate rrs-cli uses rrs-lib to implement

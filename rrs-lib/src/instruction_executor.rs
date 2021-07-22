@@ -1,3 +1,7 @@
+// Copyright 2021 Gregory Chadwick <mail@gregchadwick.co.uk>
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+
 //! An [InstructionProcessor] that executes instructions.
 //!
 //! The [InstructionExecutor] takes a [HartState] and a [Memory]. The [HartState] is updated by the

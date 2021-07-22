@@ -1,3 +1,7 @@
+// Copyright 2021 Gregory Chadwick <mail@gregchadwick.co.uk>
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+
 use clap::{clap_app, ArgMatches};
 use rrs_lib::instruction_executor::InstructionExecutor;
 use rrs_lib::instruction_string_outputter::InstructionStringOutputter;
