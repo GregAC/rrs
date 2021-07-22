@@ -1,4 +1,4 @@
-# Rust RISC-V Simulation (rrs)
+# Rust RISC-V Simulator (rrs)
 
 A RISC-V ISS implemented in rust. Supports the RV32IM instruction set (no
 exceptions or CSRs yet).
