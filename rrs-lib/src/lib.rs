@@ -1,3 +1,8 @@
+//! RISC-V instruction set simulator library
+//!
+//! Containts the building blocks for a RISC-V ISS. The seperate rrs-cli uses rrs-lib to implement
+//! a CLI driven ISS.
+
 pub mod instruction_executor;
 pub mod instruction_formats;
 pub mod instruction_string_outputter;
@@ -8,6 +13,12 @@ use downcast_rs::{impl_downcast, Downcast};
 
 pub use process_instruction::process_instruction;
 
+/// A trait for objects which do something with RISC-V instructions (e.g. execute them or print a
+/// disassembly string).
+///
+/// There is one function per RISC-V instruction. Each function takes the appropriate struct from
+/// [instruction_formats] giving access to the decoded fields of the instruction. All functions
+/// return the [InstructionProcessor::InstructionResult] associated type.
 pub trait InstructionProcessor {
     type InstructionResult;
 
@@ -75,9 +86,14 @@ pub trait InstructionProcessor {
     fn process_remu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
 }
 
+/// State of a single RISC-V hart (hardware thread)
 pub struct HartState {
+    /// x1 - x31 register values. The contents of index 0 (the x0 zero register) are ignored.
     pub registers: [u32; 32],
+    /// Program counter
     pub pc: u32,
+    /// Gives index of the last register written if one occurred in the previous instruciton. Set
+    /// to `None` if latest instruction did not write a register.
     pub last_register_write: Option<usize>,
 }
 
@@ -90,6 +106,8 @@ impl HartState {
         }
     }
 
+    /// Write a register in the hart state. Used by executing instructions for correct zero
+    /// register handling
     fn write_register(&mut self, reg_index: usize, data: u32) {
         if reg_index == 0 {
             return;
@@ -99,6 +117,8 @@ impl HartState {
         self.last_register_write = Some(reg_index)
     }
 
+    /// Read a register from the hart state. Used by executing instructions for correct zero
+    /// register handling
     fn read_register(&self, reg_index: usize) -> u32 {
         if reg_index == 0 {
             0
@@ -114,15 +134,29 @@ impl Default for HartState {
     }
 }
 
+/// The different sizes used for memory accesses
 #[derive(Clone, Copy)]
 pub enum MemAccessSize {
-    Byte,     // 8 bits
-    HalfWord, // 16 bits
-    Word,     // 32 bits
+    /// 8 bits
+    Byte,
+    /// 16 bits
+    HalfWord,
+    /// 32 bits
+    Word,
 }
 
+/// A trait for objects which implement memory operations
 pub trait Memory: Downcast {
+    /// Read `size` bytes from `addr`.
+    ///
+    /// `addr` must be aligned to `size`.
+    /// Returns `None` if `addr` doesn't exist in this memory.
     fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32>;
+
+    /// Write `size` bytes of `store_data` to `addr`
+    ///
+    /// `addr` must be aligned to `size`.
+    /// Returns `true` if write succeeds.
     fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool;
 }
 

@@ -1,7 +1,10 @@
+//! Various [Memory] implementations useful for an ISS and utility functions
+
 use super::{MemAccessSize, Memory};
 use std::io;
 use std::io::Read;
 
+/// Read bytes from an [std::io::Read] into a [Memory] starting at the given address
 pub fn read_to_memory(
     reader: impl Read,
     memory: &mut impl Memory,
@@ -22,6 +25,10 @@ pub fn read_to_memory(
     Ok(())
 }
 
+/// [Vec] backed memory.
+///
+/// The [Vec] uses `u32` as the base type. Any read or write that falls out of the [Vec]s size will
+/// result in a failed read or write.
 pub struct VecMemory {
     pub mem: Vec<u32>,
 }
@@ -34,6 +41,7 @@ impl VecMemory {
 
 impl Memory for VecMemory {
     fn read_mem(&mut self, addr: u32, size: MemAccessSize) -> Option<u32> {
+        // Calculate a mask and shift to apply to a 32-bit word to get the required data
         let (shift, mask) = match size {
             MemAccessSize::Byte => (addr & 0x3, 0xff),
             MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
@@ -44,14 +52,18 @@ impl Memory for VecMemory {
             panic!("Memory read must be aligned");
         }
 
+        // Calculate vector index required data is contained in
         let word_addr = addr >> 2;
 
+        // Read data from vector
         let read_data = self.mem.get(word_addr as usize).copied()?;
 
+        // Apply mask and shift to extract required data from word
         Some((read_data >> (shift * 8)) & mask)
     }
 
     fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool {
+        // Calculate a mask and shift needed to update 32-bit word
         let (shift, mask) = match size {
             MemAccessSize::Byte => (addr & 0x3, 0xff),
             MemAccessSize::HalfWord => (addr & 0x2, 0xffff),
@@ -62,11 +74,14 @@ impl Memory for VecMemory {
             panic!("Memory write must be aligned");
         }
 
+        // `mask` << (shift * 8) gives bits being updated, invert to get bits not being updated
         let write_mask = !(mask << (shift * 8));
 
+        // Calculate vector index data to update is contained in
         let word_addr = (addr >> 2) as usize;
 
         if let Some(update_data) = self.mem.get(word_addr) {
+            // Update word with store data, if it exists
             let new = (update_data & write_mask) | ((store_data & mask) << (shift * 8));
             self.mem[word_addr] = new;
             true
@@ -82,6 +97,14 @@ struct MemoryRegion {
     memory: Box<dyn Memory>,
 }
 
+/// A [Memory] that represents an address space forwarding reads and writes to other inner
+/// memories.
+///
+/// When reads and writes are forwarded to an inner memory the base address is adjusted appropriate
+/// (e.g. a [Memory] added with [MemorySpace::add_memory] at address `0x100000` will get a read at
+/// address `0x0` if the [MemorySpace] gets a read at `0x100000`
+///
+/// The inner memory regions cannot overlap and base addresses must be 32-bit aligned.
 pub struct MemorySpace {
     memory_regions: Vec<MemoryRegion>,
 }
@@ -99,6 +122,7 @@ impl MemorySpace {
         }
     }
 
+    // Returns true if region with given base and size overlaps with an existing region.
     fn region_overlaps_existing(&self, base: u32, size: u32) -> bool {
         for memory_region in self.memory_regions.iter() {
             if base + size <= memory_region.base {
@@ -115,6 +139,7 @@ impl MemorySpace {
         false
     }
 
+    // Gets the memory region that covers an address if it exists.
     fn get_memory_region_by_addr(&mut self, addr: u32) -> Option<&mut MemoryRegion> {
         for memory_region in self.memory_regions.iter_mut() {
             if (addr >= memory_region.base) && (addr < (memory_region.base + memory_region.size)) {
@@ -125,6 +150,11 @@ impl MemorySpace {
         None
     }
 
+    /// Add an inner memory.
+    ///
+    /// When `Ok` is returned a memory index is provided which can be used with
+    /// [MemorySpace::get_memory_ref] and [MemorySpace::get_memory_mut] to get a reference to that
+    /// memory.
     pub fn add_memory(
         &mut self,
         base: u32,
@@ -146,10 +176,16 @@ impl MemorySpace {
         Ok(new_mem_index)
     }
 
+    /// Get a reference to an inner memory
+    ///
+    /// This performs downcasting to the provided `T`. `None` is returned where the downcast fails.
     pub fn get_memory_ref<T: Memory>(&self, index: usize) -> Option<&T> {
         self.memory_regions.get(index)?.memory.downcast_ref::<T>()
     }
 
+    /// Get a mutable reference to an inner memory
+    ///
+    /// This performs downcasting to the provided `T`. `None` is returned where the downcast fails.
     pub fn get_memory_mut<T: Memory>(&mut self, index: usize) -> Option<&mut T> {
         self.memory_regions
             .get_mut(index)?

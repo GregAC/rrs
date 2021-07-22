@@ -68,6 +68,7 @@ struct SimEnvironment {
     sim_ctrl_dev_idx: usize,
 }
 
+// Device that outputs characters written to it to stdout
 struct CharOutputterDevice {}
 
 impl Memory for CharOutputterDevice {
@@ -82,6 +83,7 @@ impl Memory for CharOutputterDevice {
     }
 }
 
+// Device used to signal to the ISS to stop execution
 struct SimulationCtrlDevice {
     stop: bool,
 }
@@ -140,6 +142,9 @@ fn setup_memory_space(cli_opts: &CliOpts) -> MemorySpace {
     mem_space
 }
 
+// Given CLI arguments sets up the simulation environment.
+//
+// Returned errors are strings describing the error.
 fn setup_sim_environment(args: &ArgMatches) -> Result<SimEnvironment, String> {
     let cli_opts = process_arguments(args)?;
 
@@ -177,16 +182,18 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
     let start = Instant::now();
 
     loop {
-        let mut outputter = InstructionStringOutputter {
-            insn_pc: executor.hart_state.pc,
-        };
-
-        let insn_bits = executor
-            .mem
-            .read_mem(executor.hart_state.pc, MemAccessSize::Word)
-            .unwrap_or_else(|| panic!("Could not read PC {:08x}", executor.hart_state.pc));
 
         if let Some(log_file) = &mut sim_environment.log_file {
+            // Output current instruction disassembly to log
+            let insn_bits = executor
+                .mem
+                .read_mem(executor.hart_state.pc, MemAccessSize::Word)
+                .unwrap_or_else(|| panic!("Could not read PC {:08x}", executor.hart_state.pc));
+
+            let mut outputter = InstructionStringOutputter {
+                insn_pc: executor.hart_state.pc,
+            };
+
             writeln!(
                 log_file,
                 "{:x} {}",
@@ -195,10 +202,12 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
             ).expect("Log file write failed");
         }
 
+        // Execute instruction
         executor.step().expect("Exception during execution");
 
         insn_count += 1;
 
+        // Stop if stop requested by emulated binary via SimulationCtrlDevice
         if executor
             .mem
             .get_memory_ref::<SimulationCtrlDevice>(sim_environment.sim_ctrl_dev_idx)
@@ -210,6 +219,7 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
 
         if let Some(log_file) = &mut sim_environment.log_file {
             if let Some(reg_index) = executor.hart_state.last_register_write {
+                // Output register written by instruction to log if it wrote to one
                 writeln!(
                     log_file,
                     "x{} = {:08x}",

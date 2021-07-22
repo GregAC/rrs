@@ -127,6 +127,10 @@ fn process_opcode_store<T: InstructionProcessor>(
     }
 }
 
+/// Decodes instruction in `insn_bits` calling the appropriate function in `processor` returning
+/// the result it produces.
+///
+/// Returns `None` if instruction doesn't decode into a valid instruction.
 pub fn process_instruction<T: InstructionProcessor>(
     processor: &mut T,
     insn_bits: u32,

@@ -1,3 +1,9 @@
+//! Structures and constants for instruction decoding
+//!
+//! The structures directly relate to the RISC-V instruction formats described in the
+//! specification. See the [RISC-V specification](https://riscv.org/technical/specifications/) for
+//! further details
+
 pub const OPCODE_LOAD: u32 = 0x03;
 pub const OPCODE_MISC_MEM: u32 = 0x0f;
 pub const OPCODE_OP_IMM: u32 = 0x13;

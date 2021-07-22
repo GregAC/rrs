@@ -1,11 +1,30 @@
+//! An [InstructionProcessor] that outputs a string of the instructon disassembly
+//!
+//! # Example
+//!
+//! ```
+//! use rrs_lib;
+//! use rrs_lib::instruction_string_outputter::InstructionStringOutputter;
+//!
+//! let mut outputter = InstructionStringOutputter { insn_pc: 0 };
+//!
+//! assert_eq!(
+//!     rrs_lib::process_instruction(&mut outputter, 0x07b60893),
+//!     Some(String::from("addi x17, x12, 123"))
+//! );
+//! ```
+
 use super::instruction_formats;
 use super::InstructionProcessor;
 use paste::paste;
 
 pub struct InstructionStringOutputter {
+    /// PC of the instruction being output. Used to generate disassembly of instructions with PC
+    /// relative fields (such as BEQ and JAL).
     pub insn_pc: u32,
 }
 
+// Macros to produce string outputs for various different instruction types
 macro_rules! string_out_for_alu_reg_op {
     ($name:ident) => {
         paste! {
@@ -134,6 +153,9 @@ impl InstructionProcessor for InstructionStringOutputter {
     string_out_for_alu_reg_op! {sub}
     string_out_for_shift_ops! {sll, srl, sra}
 
+    // This instructon is called sltiu in RISC-V, but the function is called `process_sltui` for
+    // consistency with other immediate based instructions here. A specific implemention is
+    // required here (not a macro one from above) so the right mnemonic is output.
     fn process_sltui(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult {
         format!(
             "sltiu x{}, x{}, {}",
