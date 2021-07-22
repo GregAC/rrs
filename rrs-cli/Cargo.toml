@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 
 rrs-lib = { path = "../rrs-lib" }
+clap = "2"
