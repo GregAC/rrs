@@ -38,7 +38,6 @@
 //! assert_eq!(executor.hart_state.registers[1], 0x05bc9000);
 //! // Memory only contains three instructions so next step will produce a fetch error
 //! assert_eq!(executor.step(), Err(InstructionException::FetchError(0xc)));
-//! assert_eq!(executor.hart_state.registers[1], 0x05bc9000);
 //! ```
 
 use super::instruction_formats;

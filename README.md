@@ -1,6 +1,6 @@
 # Rust RISC-V Simulator (rrs)
 
-A RISC-V ISS implemented in rust. Supports the RV32IM instruction set (no
+A RISC-V ISS implemented in Rust. Supports the RV32IM instruction set (no
 exceptions or CSRs yet).
 
 RRS is split into two parts, rrs-lib and rrs-cli
@@ -19,7 +19,7 @@ Once generated it can be found in `target/doc/rrs-lib`
 
 ## rrs-cli
 
-This crate implements a CLI for the ISS, build and run rrs-clk with a `--help`
+This crate implements a CLI for the ISS, build and run rrs-cli with a `--help`
 argument to get full usage instructions.
 
 ```sh
