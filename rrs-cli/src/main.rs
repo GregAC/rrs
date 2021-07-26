@@ -10,7 +10,7 @@ use rrs_lib::memories::{MemorySpace, VecMemory};
 use rrs_lib::{HartState, MemAccessSize, Memory};
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, Write};
+use std::io::{BufReader, BufWriter, Write};
 use std::time::{Instant};
 
 #[derive(Default)]
@@ -68,7 +68,7 @@ fn process_arguments(args: &ArgMatches) -> Result<CliOpts, String> {
 struct SimEnvironment {
     memory_space: MemorySpace,
     hart_state: HartState,
-    log_file: Option<File>,
+    log_file: Option<Box<dyn Write>>,
     sim_ctrl_dev_idx: usize,
 }
 
@@ -170,7 +170,8 @@ fn setup_sim_environment(args: &ArgMatches) -> Result<SimEnvironment, String> {
         .map_err(|e| format!("Could not load binary {}: {}", cli_opts.binary_file, e))?;
 
     if let Some(log_filename) = cli_opts.log_filename {
-        sim_environment.log_file = Some(File::create(log_filename).map_err(|e| e.to_string())?);
+        let log_file_unbuf = File::create(log_filename).map_err(|e| e.to_string())?;
+        sim_environment.log_file = Some(Box::new(BufWriter::new(log_file_unbuf)));
     }
 
     Ok(sim_environment)
@@ -186,7 +187,6 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
     let start = Instant::now();
 
     loop {
-
         if let Some(log_file) = &mut sim_environment.log_file {
             // Output current instruction disassembly to log
             let insn_bits = executor
