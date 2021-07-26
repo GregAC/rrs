@@ -48,3 +48,9 @@ simulation.
 
 * 0x80000000 - Write a character here to output it to stdout
 * 0x80000004 - Write a non zero value here to terminate the simulation
+
+## Blog
+
+I've written about rrs on my blog, see:
+
+* [Building a RISC-V Simulator in Rust - Part 1](https://gregchadwick.co.uk/blog/building-rrs-pt1/)
