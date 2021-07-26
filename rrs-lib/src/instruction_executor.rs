@@ -285,6 +285,58 @@ macro_rules! make_shift_op_fns {
     };
 }
 
+macro_rules! make_branch_op_fn {
+    ($name:ident, $cond_fn:expr) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_formats::BType
+            ) -> Self::InstructionResult {
+                Ok(self.execute_branch(dec_insn, $cond_fn))
+            }
+        }
+    };
+}
+
+macro_rules! make_load_op_fn_inner {
+    ($name:ident, $size:ty, $signed: expr) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_formats::IType
+            ) -> Self::InstructionResult {
+                self.execute_load(dec_insn, $size, $signed)?;
+
+                Ok(false)
+            }
+        }
+    };
+}
+
+macro_rules! make_load_op_fn {
+    ($name:ident, $size:ty, signed) => {
+        make_load_op_fn_inner! {$name, $size, true}
+    };
+    ($name:ident, $size:ty, unsigned) => {
+        make_load_op_fn_inner! {$name, $size, false}
+    };
+}
+
+macro_rules! make_store_op_fn {
+    ($name:ident, $size:ty) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_formats::SType
+            ) -> Self::InstructionResult {
+                self.execute_store(dec_insn, $size)?;
+
+                Ok(false)
+            }
+        }
+    };
+}
+
 impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     /// Result is `Ok` when instruction execution is successful. `Ok(true) indicates the
     /// instruction updated the PC and Ok(false) indicates it did not (so the PC must be
@@ -317,77 +369,22 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
         Ok(false)
     }
 
-    fn process_beq(&mut self, dec_insn: instruction_formats::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| a == b))
-    }
+    make_branch_op_fn! {beq, |a, b| a == b}
+    make_branch_op_fn! {bne, |a, b| a != b}
+    make_branch_op_fn! {blt, |a, b|  (a as i32) < (b as i32)}
+    make_branch_op_fn! {bltu, |a, b| a < b}
+    make_branch_op_fn! {bge, |a, b|  (a as i32) >= (b as i32)}
+    make_branch_op_fn! {bgeu, |a, b| a >= b}
 
-    fn process_bne(&mut self, dec_insn: instruction_formats::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| a != b))
-    }
+    make_load_op_fn! {lb, MemAccessSize::Byte, signed}
+    make_load_op_fn! {lbu, MemAccessSize::Byte, unsigned}
+    make_load_op_fn! {lh, MemAccessSize::HalfWord, signed}
+    make_load_op_fn! {lhu, MemAccessSize::HalfWord, unsigned}
+    make_load_op_fn! {lw, MemAccessSize::Word, unsigned}
 
-    fn process_blt(&mut self, dec_insn: instruction_formats::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| (a as i32) < (b as i32)))
-    }
-
-    fn process_bltu(&mut self, dec_insn: instruction_formats::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| a < b))
-    }
-
-    fn process_bge(&mut self, dec_insn: instruction_formats::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| (a as i32) >= (b as i32)))
-    }
-
-    fn process_bgeu(&mut self, dec_insn: instruction_formats::BType) -> Self::InstructionResult {
-        Ok(self.execute_branch(dec_insn, |a, b| a >= b))
-    }
-
-    fn process_lb(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult {
-        self.execute_load(dec_insn, MemAccessSize::Byte, true)?;
-
-        Ok(false)
-    }
-
-    fn process_lbu(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult {
-        self.execute_load(dec_insn, MemAccessSize::Byte, false)?;
-
-        Ok(false)
-    }
-
-    fn process_lh(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult {
-        self.execute_load(dec_insn, MemAccessSize::HalfWord, true)?;
-
-        Ok(false)
-    }
-
-    fn process_lhu(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult {
-        self.execute_load(dec_insn, MemAccessSize::HalfWord, false)?;
-
-        Ok(false)
-    }
-
-    fn process_lw(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult {
-        self.execute_load(dec_insn, MemAccessSize::Word, false)?;
-
-        Ok(false)
-    }
-
-    fn process_sb(&mut self, dec_insn: instruction_formats::SType) -> Self::InstructionResult {
-        self.execute_store(dec_insn, MemAccessSize::Byte)?;
-
-        Ok(false)
-    }
-
-    fn process_sh(&mut self, dec_insn: instruction_formats::SType) -> Self::InstructionResult {
-        self.execute_store(dec_insn, MemAccessSize::HalfWord)?;
-
-        Ok(false)
-    }
-
-    fn process_sw(&mut self, dec_insn: instruction_formats::SType) -> Self::InstructionResult {
-        self.execute_store(dec_insn, MemAccessSize::Word)?;
-
-        Ok(false)
-    }
+    make_store_op_fn! {sb, MemAccessSize::Byte}
+    make_store_op_fn! {sh, MemAccessSize::HalfWord}
+    make_store_op_fn! {sw, MemAccessSize::Word}
 
     fn process_jal(&mut self, dec_insn: instruction_formats::JType) -> Self::InstructionResult {
         let target_pc = self.hart_state.pc.wrapping_add(dec_insn.imm as u32);
