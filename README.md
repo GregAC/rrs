@@ -17,6 +17,16 @@ generated via rustdoc
 
 Once generated it can be found in `target/doc/rrs-lib`
 
+### Tests
+
+`rrs-lib` implements a small number of tests, these can be run with cargo as
+usual.
+
+```sh
+> cd rrs-lib
+> cargo test
+```
+
 ## rrs-cli
 
 This crate implements a CLI for the ISS, build and run rrs-cli with a `--help`
