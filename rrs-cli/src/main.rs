@@ -11,7 +11,7 @@ use rrs_lib::{HartState, MemAccessSize, Memory};
 use std::fs::File;
 use std::io;
 use std::io::{BufReader, BufWriter, Write};
-use std::time::{Instant};
+use std::time::Instant;
 
 #[derive(Default)]
 struct CliOpts {
@@ -21,6 +21,7 @@ struct CliOpts {
     load_addr: u32,
     start_addr: u32,
     log_filename: Option<String>,
+    char_out_filename: Option<String>,
 }
 
 fn get_arg_matches() -> ArgMatches<'static> {
@@ -34,6 +35,7 @@ fn get_arg_matches() -> ArgMatches<'static> {
         (@arg load_addr: --load_addr [addr] "Address to load the binary at")
         (@arg start_addr: --start_addr [addr] "Start address")
         (@arg log_filename: -l --log_file [file] "File to log executed instructions to")
+        (@arg char_out_filename: --char_out_file [file] "File to write simulated character output to")
     )
     .get_matches()
 }
@@ -61,6 +63,7 @@ fn process_arguments(args: &ArgMatches) -> Result<CliOpts, String> {
     new_opts.load_addr = process_u32_arg(args, "load_addr", 16, 0x100000)?;
     new_opts.start_addr = process_u32_arg(args, "start_addr", 16, new_opts.load_addr)?;
     new_opts.log_filename = args.value_of("log_filename").map(|s| s.to_string());
+    new_opts.char_out_filename = args.value_of("char_out_filename").map(|s| s.to_string());
 
     Ok(new_opts)
 }
@@ -73,7 +76,23 @@ struct SimEnvironment {
 }
 
 // Device that outputs characters written to it to stdout
-struct CharOutputterDevice {}
+struct CharOutputterDevice {
+    char_out: Box<dyn Write>,
+}
+
+impl CharOutputterDevice {
+    fn new(char_out_filename: Option<&str>) -> Result<Self, String> {
+        Ok(CharOutputterDevice {
+            char_out: match char_out_filename {
+                Some(f) => Box::new(
+                    File::create(f)
+                        .map_err(|e| format!("Could not open char out file {}: {}", f, e))?,
+                ),
+                None => Box::new(io::stdout()),
+            },
+        })
+    }
+}
 
 impl Memory for CharOutputterDevice {
     fn read_mem(&mut self, _addr: u32, _size: MemAccessSize) -> Option<u32> {
@@ -82,7 +101,7 @@ impl Memory for CharOutputterDevice {
 
     fn write_mem(&mut self, _addr: u32, _size: MemAccessSize, store_data: u32) -> bool {
         let c: char = store_data as u8 as char;
-        print!("{}", c);
+        write!(self.char_out, "{}", c).expect("Failure writing character out");
         true
     }
 }
@@ -127,7 +146,7 @@ fn load_binary(cli_opts: &CliOpts, mem: &mut impl Memory) -> Result<(), io::Erro
     Ok(())
 }
 
-fn setup_memory_space(cli_opts: &CliOpts) -> MemorySpace {
+fn setup_memory_space(cli_opts: &CliOpts) -> Result<MemorySpace, String> {
     let mut mem_space = MemorySpace::new();
 
     // TODO: Error handling
@@ -140,10 +159,16 @@ fn setup_memory_space(cli_opts: &CliOpts) -> MemorySpace {
         .expect("Adding base memory is expected to succeed");
 
     mem_space
-        .add_memory(0x80000000, 0x4, Box::new(CharOutputterDevice {}))
+        .add_memory(
+            0x80000000,
+            0x4,
+            Box::new(CharOutputterDevice::new(
+                cli_opts.char_out_filename.as_deref(),
+            )?),
+        )
         .expect("Adding char output device is expected to succeed");
 
-    mem_space
+    Ok(mem_space)
 }
 
 // Given CLI arguments sets up the simulation environment.
@@ -153,7 +178,7 @@ fn setup_sim_environment(args: &ArgMatches) -> Result<SimEnvironment, String> {
     let cli_opts = process_arguments(args)?;
 
     let mut sim_environment = SimEnvironment {
-        memory_space: setup_memory_space(&cli_opts),
+        memory_space: setup_memory_space(&cli_opts)?,
         hart_state: HartState::new(),
         log_file: None,
         sim_ctrl_dev_idx: 0,
@@ -170,7 +195,8 @@ fn setup_sim_environment(args: &ArgMatches) -> Result<SimEnvironment, String> {
         .map_err(|e| format!("Could not load binary {}: {}", cli_opts.binary_file, e))?;
 
     if let Some(log_filename) = cli_opts.log_filename {
-        let log_file_unbuf = File::create(log_filename).map_err(|e| e.to_string())?;
+        let log_file_unbuf = File::create(&log_filename)
+            .map_err(|e| format!("Could not open log file {}: {}", log_filename, e))?;
         sim_environment.log_file = Some(Box::new(BufWriter::new(log_file_unbuf)));
     }
 
@@ -203,7 +229,8 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
                 "{:x} {}",
                 executor.hart_state.pc,
                 rrs_lib::process_instruction(&mut outputter, insn_bits).unwrap()
-            ).expect("Log file write failed");
+            )
+            .expect("Log file write failed");
         }
 
         // Execute instruction
@@ -228,7 +255,8 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
                     log_file,
                     "x{} = {:08x}",
                     reg_index, executor.hart_state.registers[reg_index]
-                ).expect("Log file write failed");
+                )
+                .expect("Log file write failed");
             }
         }
     }
