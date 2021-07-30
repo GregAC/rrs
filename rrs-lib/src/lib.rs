@@ -88,6 +88,8 @@ pub trait InstructionProcessor {
     fn process_divu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
     fn process_rem(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
     fn process_remu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
+
+    fn process_fence(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult;
 }
 
 /// State of a single RISC-V hart (hardware thread)

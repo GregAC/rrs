@@ -418,4 +418,8 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     make_alu_op_reg_fn! {divu, |a, b| if b == 0 {u32::MAX} else {a / b}}
     make_alu_op_reg_fn! {rem, |a, b| if b == 0 {a} else {((a as i32).wrapping_rem(b as i32)) as u32}}
     make_alu_op_reg_fn! {remu, |a, b| if b == 0 {a} else {a % b}}
+
+    fn process_fence(&mut self, _dec_insn: instruction_formats::IType) -> Self::InstructionResult {
+        Ok(false)
+    }
 }

@@ -193,6 +193,10 @@ impl InstructionProcessor for InstructionStringOutputter {
     }
 
     string_out_for_alu_reg_ops! {mul, mulh, mulhu, mulhsu, div, divu, rem, remu}
+
+    fn process_fence(&mut self, _dec_insn: instruction_formats::IType) -> Self::InstructionResult {
+        String::from("fence")
+    }
 }
 
 #[cfg(test)]
@@ -211,7 +215,7 @@ mod tests {
             0x04c004ef, 0x100183e7, 0x04d38263, 0x05349063, 0x03774e63, 0x03dbdc63, 0x035e6a63,
             0x0398f863, 0x04c18983, 0x07841b83, 0x1883a403, 0x03af4b03, 0x15acd883, 0x0d320923,
             0x18061323, 0x0b382523, 0x034684b3, 0x03679f33, 0x0324bbb3, 0x03d9a233, 0x03f549b3,
-            0x02ee5133, 0x02a6e9b3, 0x02c976b3,
+            0x02ee5133, 0x02a6e9b3, 0x02c976b3, 0xabc0000f,
         ];
 
         assert_eq!(
@@ -445,6 +449,11 @@ mod tests {
         assert_eq!(
             process_instruction(&mut outputter, test_insns[44]),
             Some(String::from("remu x13, x18, x12"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[45]),
+            Some(String::from("fence"))
         );
     }
 }
