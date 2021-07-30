@@ -351,9 +351,9 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     make_alu_op_fns! {and, |a, b| a & b}
     make_alu_op_fns! {xor, |a, b| a ^ b}
 
-    make_shift_op_fns! {sll, |a, b| a << b}
-    make_shift_op_fns! {srl, |a, b| a >> b}
-    make_shift_op_fns! {sra, |a, b| ((a as i32) >> b) as u32}
+    make_shift_op_fns! {sll, |a, b| a << (b & 0x1f)}
+    make_shift_op_fns! {srl, |a, b| a >> (b & 0x1f)}
+    make_shift_op_fns! {sra, |a, b| ((a as i32) >> (b & 0x1f)) as u32}
 
     fn process_lui(&mut self, dec_insn: instruction_formats::UType) -> Self::InstructionResult {
         self.hart_state
