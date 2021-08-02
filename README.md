@@ -5,6 +5,19 @@ exceptions or CSRs yet).
 
 RRS is split into two parts, rrs-lib and rrs-cli
 
+## Quickstart
+
+To build an example hello word program and run it on rrs-cli (requires a riscv
+toolchain):
+
+```sh
+> make -C ./riscv-sw/hello_world all
+> cd rrs-cli
+> cargo run -- --binary ../riscv-sw/hello_world/hello_world.bin -l run.log
+```
+
+After execution `run.log` will contain a trace of ISS execution.
+
 ## rrs-lib
 
 This crate implements the components required for the ISS. Documentation can be
@@ -48,6 +61,43 @@ simulation.
 
 * 0x80000000 - Write a character here to output it to stdout
 * 0x80000004 - Write a non zero value here to terminate the simulation
+
+## RISC-V software
+
+A RISC-V makefile based build flow with a example hello world program can be
+found in `riscv-sw/`. A RISC-V toolchain will be required, such as the ones
+available from lowRISC: https://github.com/lowRISC/lowrisc-toolchains/releases.
+
+The makefile assumes GCC with the prefix riscv32-unknown-elf (which the lowRISC
+RV32IMC toolchain gives you). Adjust the relevant variables in
+`riscv-sw/Makefile.include` if you have something different.
+
+To build the hello_world example in the repository root run:
+
+```
+> make -C ./sw/hello_world all
+```
+
+This will build a `.elf`, `.bin` and `.dis` file. The `.bin` is suitable for
+running on rrs-cli and the `.dis` is a disassembly.
+
+### Using the build flow
+
+To build a new program create a subdirectory under `sw/` and create a `Makfile`
+with the following contents:
+
+```
+PROG_NAME = [program name here]
+
+include ../Makefile.include
+```
+
+Set `PROG_NAME` to whatever you want to call the binary. By default all .c and
+.s files in the directory  will be built and linked together. The startup code
+is in `riscv-sw/crt0.s` and calls the function `main`. See
+`riscv-sw/Makefile.include` for other variables that can be set to alter the
+build.
+
 
 ## Blog
 

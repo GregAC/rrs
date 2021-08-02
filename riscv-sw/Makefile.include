@@ -1,0 +1,42 @@
+# Copyright 2021 Gregory Chadwick <mail@gregchadwick.co.uk>
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+RISCV_SW_PATH = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
+CRT0_OBJ ?= $(RISCV_SW_PATH)crt0.o
+C_SRCS ?= $(wildcard *.c)
+ASM_SRCS ?= $(wildcard *.s)
+C_OBJS ?= $(patsubst %.c,%.o,$(C_SRCS))
+ASM_OBJS ?= $(patsubst %.s,%.o,$(ASM_SRCS)) $(CRT0_OBJ)
+
+LINKER_SCRIPT ?= $(RISCV_SW_PATH)link.ld
+
+CC = riscv32-unknown-elf-gcc
+AS = riscv32-unknown-elf-as
+CFLAGS ?= -static -mcmodel=medany -march=rv32im -nostdlib
+ASFLAGS ?= -march=rv32im
+CPPFLAGS ?=
+
+$(PROG_NAME).elf : $(C_OBJS) $(ASM_OBJS)
+	riscv32-unknown-elf-ld $(C_OBJS) $(ASM_OBJS) -T $(LINKER_SCRIPT) -o $@
+
+$(PROG_NAME).dis : $(PROG_NAME).elf
+	riscv32-unknown-elf-objdump -fhsdt $< > $@
+
+$(PROG_NAME).bin : $(PROG_NAME).elf
+	riscv32-unknown-elf-objcopy -O binary $< $@
+
+.PHONY: all clean
+all: $(PROG_NAME).dis $(PROG_NAME).bin
+
+clean:
+	rm -f $(PROG_NAME).dis \
+	$(PROG_NAME).bin \
+	$(PROG_NAME).elf \
+	$(C_OBJS) \
+	$(ASM_OBJS)
+
+
+
+
