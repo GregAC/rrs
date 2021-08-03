@@ -11,9 +11,9 @@ To build an example hello word program and run it on rrs-cli (requires a riscv
 toolchain):
 
 ```sh
-> make -C ./riscv-sw/hello_world all
+> make -C ./riscv-sw/examples/hello_world all
 > cd rrs-cli
-> cargo run -- --binary ../riscv-sw/hello_world/hello_world.bin -l run.log
+> cargo run -- --binary ../riscv-sw/examples/hello_world/hello_world.bin -l run.log
 ```
 
 After execution `run.log` will contain a trace of ISS execution.
@@ -64,9 +64,9 @@ simulation.
 
 ## RISC-V software
 
-A RISC-V makefile based build flow with a example hello world program can be
-found in `riscv-sw/`. A RISC-V toolchain will be required, such as the ones
-available from lowRISC: https://github.com/lowRISC/lowrisc-toolchains/releases.
+A RISC-V makefile based build flow with  can be found in `riscv-sw/build-flow`.
+A RISC-V toolchain will be required, such as the ones available from lowRISC:
+https://github.com/lowRISC/lowrisc-toolchains/releases.
 
 The makefile assumes GCC with the prefix riscv32-unknown-elf (which the lowRISC
 RV32IMC toolchain gives you). Adjust the relevant variables in
@@ -74,8 +74,8 @@ RV32IMC toolchain gives you). Adjust the relevant variables in
 
 To build the hello_world example in the repository root run:
 
-```
-> make -C ./sw/hello_world all
+```sh
+> make -C ./riscv-sw/examples/hello_world all
 ```
 
 This will build a `.elf`, `.bin` and `.dis` file. The `.bin` is suitable for
@@ -89,15 +89,27 @@ with the following contents:
 ```
 PROG_NAME = [program name here]
 
-include ../Makefile.include
+include ../Makefile.include # Adjust as required depending on sub-directory
 ```
 
 Set `PROG_NAME` to whatever you want to call the binary. By default all .c and
 .s files in the directory  will be built and linked together. The startup code
-is in `riscv-sw/crt0.s` and calls the function `main`. See
+is in `riscv-sw/build-flow/crt0.s` and calls the function `main`. See
 `riscv-sw/Makefile.include` for other variables that can be set to alter the
 build.
 
+## RISC-V Architectural Tests
+
+rrs passes the M and I suites in the RISC-V architectural tests. To run the
+suites:
+
+```sh
+> cd rrs-cli
+> cargo build
+> cd ..
+> make -C ./vendor/riscv-arch-test/ TARGETDIR=`pwd`/riscv-sw/tests/riscv-arch-test-target RISCV_TARGET=rrs RISCV_DEVICE=M
+> make -C ./vendor/riscv-arch-test/ TARGETDIR=`pwd`/riscv-sw/tests/riscv-arch-test-target RISCV_TARGET=rrs RISCV_DEVICE=I
+```
 
 ## Blog
 
