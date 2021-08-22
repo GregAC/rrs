@@ -92,6 +92,26 @@ impl ITypeShamt {
     }
 }
 
+pub struct ITypeCSR {
+    pub csr: u32,
+    pub rs1: usize,
+    pub funct3: u32,
+    pub rd: usize
+}
+
+impl ITypeCSR {
+    pub fn new(insn: u32) -> ITypeCSR {
+        let csr: u32 = (insn >> 20) & 0xfff;
+
+        ITypeCSR {
+            csr,
+            rs1: ((insn >> 15) & 0x1f) as usize,
+            funct3: (insn >> 12) & 0x7,
+            rd: ((insn >> 7) & 0x1f) as usize,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct SType {
     pub imm: i32,

@@ -20,7 +20,9 @@
 
 use super::instruction_formats;
 use super::InstructionProcessor;
+use super::csrs::CSRAddr;
 use paste::paste;
+use std::convert::TryFrom;
 
 pub struct InstructionStringOutputter {
     /// PC of the instruction being output. Used to generate disassembly of instructions with PC
@@ -147,6 +149,45 @@ macro_rules! string_out_for_store_ops {
     }
 }
 
+fn csr_string_name(csr_addr: u32) -> String {
+    match CSRAddr::try_from(csr_addr) {
+        Ok(csr) => format!("{:?}", csr),
+        Err(_) => format!("0x{:03x}", csr_addr)
+    }
+}
+
+macro_rules! string_out_for_csr_op {
+    ($name:ident) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_formats::ITypeCSR
+            ) -> Self::InstructionResult {
+                format!("{} x{}, {}, x{}", stringify!($name), dec_insn.rd, csr_string_name(dec_insn.csr),
+                    dec_insn.rs1)
+            }
+        }
+
+        paste! {
+            fn [<process_ $name i>](
+                &mut self,
+                dec_insn: instruction_formats::ITypeCSR
+            ) -> Self::InstructionResult {
+                format!("{}i x{}, {}, 0x{:02x}", stringify!($name), dec_insn.rd, csr_string_name(dec_insn.csr),
+                    dec_insn.rs1 as u32)
+            }
+        }
+    };
+}
+
+macro_rules! string_out_for_csr_ops {
+    ($($name:ident),*) => {
+        $(
+            string_out_for_csr_op! {$name}
+        )*
+    };
+}
+
 impl InstructionProcessor for InstructionStringOutputter {
     type InstructionResult = String;
 
@@ -197,6 +238,8 @@ impl InstructionProcessor for InstructionStringOutputter {
     fn process_fence(&mut self, _dec_insn: instruction_formats::IType) -> Self::InstructionResult {
         String::from("fence")
     }
+
+    string_out_for_csr_ops! {csrrw, csrrs, csrrc}
 }
 
 #[cfg(test)]
@@ -215,7 +258,8 @@ mod tests {
             0x04c004ef, 0x100183e7, 0x04d38263, 0x05349063, 0x03774e63, 0x03dbdc63, 0x035e6a63,
             0x0398f863, 0x04c18983, 0x07841b83, 0x1883a403, 0x03af4b03, 0x15acd883, 0x0d320923,
             0x18061323, 0x0b382523, 0x034684b3, 0x03679f33, 0x0324bbb3, 0x03d9a233, 0x03f549b3,
-            0x02ee5133, 0x02a6e9b3, 0x02c976b3, 0xabc0000f,
+            0x02ee5133, 0x02a6e9b3, 0x02c976b3, 0xabc0000f, 0x30069573, 0x3411a973, 0x34483ff3,
+            0x3409d9f3, 0x30556c73, 0x3046faf3,
         ];
 
         assert_eq!(
@@ -454,6 +498,36 @@ mod tests {
         assert_eq!(
             process_instruction(&mut outputter, test_insns[45]),
             Some(String::from("fence"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[46]),
+            Some(String::from("csrrw x10, mstatus, x13"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[47]),
+            Some(String::from("csrrs x18, mepc, x3"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[48]),
+            Some(String::from("csrrc x31, mip, x16"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[49]),
+            Some(String::from("csrrwi x19, mscratch, 0x13"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[50]),
+            Some(String::from("csrrsi x24, mtvec, 0x0a"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[51]),
+            Some(String::from("csrrci x21, mie, 0x0d"))
         );
     }
 }

@@ -90,7 +90,31 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
     {
         let a = self.hart_state.read_register(dec_insn.rs1);
         let result = op(a, dec_insn.shamt);
-        self.hart_state.write_register(dec_insn.rd, result)
+        self.hart_state.write_register(dec_insn.rd, result);
+    }
+
+    fn execute_csr_op<F>(&mut self, dec_insn: instruction_formats::ITypeCSR, use_imm: bool, op: F) -> Result<(), InstructionException>
+    where
+        F: Fn(u32, u32) -> u32,
+    {
+        // TODO: Neater way to deal with illegal instruction? Need instruction bits here and PC
+        let old_csr = self.hart_state.read_csr(dec_insn.csr).ok_or(InstructionException::IllegalInstruction(0, 0))?;
+
+        let a = if use_imm {
+            dec_insn.rs1 as u32
+        } else {
+            self.hart_state.read_register(dec_insn.rs1)
+        };
+
+        let new_csr = op(old_csr, a);
+
+        if !self.hart_state.write_csr(dec_insn.csr, new_csr) {
+            panic!("CSR write should succeed if execution reaches this point");
+        }
+
+        self.hart_state.write_register(dec_insn.rd, old_csr);
+
+        Ok(())
     }
 
     // Returns true if branch succeeds
@@ -337,6 +361,32 @@ macro_rules! make_store_op_fn {
     };
 }
 
+macro_rules! make_csr_op_fns {
+    ($name:ident, $op_fn:expr) => {
+        paste! {
+            fn [<process_ $name>](
+                &mut self,
+                dec_insn: instruction_formats::ITypeCSR
+            ) -> Self::InstructionResult {
+                self.execute_csr_op(dec_insn, false, $op_fn)?;
+
+                Ok(false)
+            }
+        }
+
+        paste! {
+            fn [<process_ $name i>](
+                &mut self,
+                dec_insn: instruction_formats::ITypeCSR
+            ) -> Self::InstructionResult {
+                self.execute_csr_op(dec_insn, true, $op_fn)?;
+
+                Ok(false)
+            }
+        }
+    };
+}
+
 impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     /// Result is `Ok` when instruction execution is successful. `Ok(true) indicates the
     /// instruction updated the PC and Ok(false) indicates it did not (so the PC must be
@@ -422,4 +472,8 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     fn process_fence(&mut self, _dec_insn: instruction_formats::IType) -> Self::InstructionResult {
         Ok(false)
     }
+
+    make_csr_op_fns! {csrrw, |_old_csr, a| a}
+    make_csr_op_fns! {csrrs, |old_csr, a| old_csr | a}
+    make_csr_op_fns! {csrrc, |old_csr, a| old_csr & !a}
 }

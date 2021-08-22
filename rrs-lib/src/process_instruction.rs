@@ -131,6 +131,23 @@ fn process_opcode_store<T: InstructionProcessor>(
     }
 }
 
+fn process_opcode_system<T: InstructionProcessor>(
+    processor: &mut T,
+    insn_bits: u32,
+) -> Option<T::InstructionResult> {
+    let dec_insn = instruction_formats::ITypeCSR::new(insn_bits);
+
+    match dec_insn.funct3 {
+        0b001 => Some(processor.process_csrrw(dec_insn)),
+        0b010 => Some(processor.process_csrrs(dec_insn)),
+        0b011 => Some(processor.process_csrrc(dec_insn)),
+        0b101 => Some(processor.process_csrrwi(dec_insn)),
+        0b110 => Some(processor.process_csrrsi(dec_insn)),
+        0b111 => Some(processor.process_csrrci(dec_insn)),
+        _ => None,
+    }
+}
+
 /// Decodes instruction in `insn_bits` calling the appropriate function in `processor` returning
 /// the result it produces.
 ///
@@ -166,6 +183,7 @@ pub fn process_instruction<T: InstructionProcessor>(
                 _ => None,
             }
         }
+        instruction_formats::OPCODE_SYSTEM => process_opcode_system(processor, insn_bits),
         _ => None,
     }
 }

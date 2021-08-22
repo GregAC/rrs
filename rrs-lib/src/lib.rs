@@ -12,6 +12,7 @@ pub mod instruction_formats;
 pub mod instruction_string_outputter;
 pub mod memories;
 pub mod process_instruction;
+pub mod csrs;
 
 use downcast_rs::{impl_downcast, Downcast};
 
@@ -90,6 +91,13 @@ pub trait InstructionProcessor {
     fn process_remu(&mut self, dec_insn: instruction_formats::RType) -> Self::InstructionResult;
 
     fn process_fence(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult;
+
+    fn process_csrrw(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
+    fn process_csrrs(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
+    fn process_csrrc(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
+    fn process_csrrwi(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
+    fn process_csrrsi(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
+    fn process_csrrci(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
 }
 
 /// State of a single RISC-V hart (hardware thread)
@@ -101,6 +109,8 @@ pub struct HartState {
     /// Gives index of the last register written if one occurred in the previous instruciton. Set
     /// to `None` if latest instruction did not write a register.
     pub last_register_write: Option<usize>,
+
+    pub csr_set: csrs::CSRSet
 }
 
 impl HartState {
@@ -109,6 +119,7 @@ impl HartState {
             registers: [0; 32],
             pc: 0,
             last_register_write: None,
+            csr_set: csrs::CSRSet::default()
         }
     }
 
@@ -131,6 +142,23 @@ impl HartState {
         } else {
             self.registers[reg_index]
         }
+    }
+
+    fn write_csr(&mut self, csr_addr: u32, data: u32) -> bool {
+        if let Some(csr) = self.csr_set.get_csr(csr_addr) {
+            csr.write(data);
+            true
+        } else {
+            false
+        }
+    }
+
+    // TODO: get_csr needs &mut so this needs &mut, can we refactor to avoid this without having to
+    // make two copies of get_csr?
+    fn read_csr(&mut self, csr_addr: u32) -> Option<u32> {
+        let csr = self.csr_set.get_csr(csr_addr)?;
+
+        Some(csr.read())
     }
 }
 
@@ -166,6 +194,11 @@ pub trait Memory: Downcast {
     fn write_mem(&mut self, addr: u32, size: MemAccessSize, store_data: u32) -> bool;
 }
 
+pub trait CSR {
+    fn read(&self) -> u32;
+    fn write(&mut self, val: u32);
+}
+
 impl_downcast!(Memory);
 
 #[cfg(test)]
@@ -174,29 +207,8 @@ mod tests {
     use super::instruction_string_outputter::InstructionStringOutputter;
     use super::*;
 
-    #[test]
-    fn test_insn_execute() {
-        let mut hart = HartState::new();
-        let mut mem = memories::VecMemory::new(vec![
-            0x1234b137, 0xbcd10113, 0xf387e1b7, 0x3aa18193, 0xbed892b7, 0x7ac28293, 0x003100b3,
-            0xf4e0e213, 0x02120a63, 0x00121463, 0x1542c093, 0x00c0036f, 0x0020f0b3, 0x402080b3,
-            0x00000397, 0x02838393, 0x0003a403, 0x00638483, 0x0023d503, 0x00139223, 0x0043a583,
-            0x00000000, 0x00000000, 0x00000000, 0xdeadbeef, 0xbaadf00d,
-        ]);
-
-        hart.pc = 0;
-
-        // TODO: With the 'executor' concept we need to effectively create a new one each step as
-        // it's meant to be just taking a reference to things to execute, but then if we want to
-        // access those things we either do it via the executor or create a new one before the next
-        // step to allow access via the 'main' object, could just make step part of the 'main'
-        // object? Having the executor only coupled to a bare minimum of state could be good?
-        let mut executor = InstructionExecutor {
-            hart_state: &mut hart,
-            mem: &mut mem,
-        };
-
-        while executor.hart_state.pc != 0x54 {
+    fn run_insns<'a, M: Memory>(executor: &mut InstructionExecutor<'a, M>, end_pc: u32) {
+        while executor.hart_state.pc != end_pc {
             let mut outputter = InstructionStringOutputter {
                 insn_pc: executor.hart_state.pc,
             };
@@ -219,22 +231,71 @@ mod tests {
                 );
             }
         }
+    }
 
-        assert_eq!(executor.hart_state.registers[1], 0x05bc8f77);
-        assert_eq!(executor.hart_state.registers[2], 0x1234abcd);
-        assert_eq!(executor.hart_state.registers[3], 0xf387e3aa);
-        assert_eq!(executor.hart_state.registers[4], 0xffffff7f);
-        assert_eq!(executor.hart_state.registers[5], 0xbed897ac);
-        assert_eq!(executor.hart_state.registers[6], 0x00000030);
-        assert_eq!(executor.hart_state.registers[7], 0x00000060);
-        assert_eq!(executor.hart_state.registers[8], 0xdeadbeef);
-        assert_eq!(executor.hart_state.registers[9], 0xffffffad);
-        assert_eq!(executor.hart_state.registers[10], 0x0000dead);
-        assert_eq!(executor.hart_state.registers[11], 0xbaad8f77);
+    #[test]
+    fn test_insn_execute() {
+        let mut hart_state = HartState::new();
+        let mut mem = memories::VecMemory::new(vec![
+            0x1234b137, 0xbcd10113, 0xf387e1b7, 0x3aa18193, 0xbed892b7, 0x7ac28293, 0x003100b3,
+            0xf4e0e213, 0x02120a63, 0x00121463, 0x1542c093, 0x00c0036f, 0x0020f0b3, 0x402080b3,
+            0x00000397, 0x02838393, 0x0003a403, 0x00638483, 0x0023d503, 0x00139223, 0x0043a583,
+            0x00000000, 0x00000000, 0x00000000, 0xdeadbeef, 0xbaadf00d,
+        ]);
+
+        hart_state.pc = 0;
+
+        let mut executor = InstructionExecutor {
+            hart_state: &mut hart_state,
+            mem: &mut mem,
+        };
+
+        run_insns(&mut executor, 0x54);
 
         assert_eq!(
             executor.step(),
             Err(InstructionException::IllegalInstruction(0x54, 0))
         );
+
+        assert_eq!(hart_state.registers[1], 0x05bc8f77);
+        assert_eq!(hart_state.registers[2], 0x1234abcd);
+        assert_eq!(hart_state.registers[3], 0xf387e3aa);
+        assert_eq!(hart_state.registers[4], 0xffffff7f);
+        assert_eq!(hart_state.registers[5], 0xbed897ac);
+        assert_eq!(hart_state.registers[6], 0x00000030);
+        assert_eq!(hart_state.registers[7], 0x00000060);
+        assert_eq!(hart_state.registers[8], 0xdeadbeef);
+        assert_eq!(hart_state.registers[9], 0xffffffad);
+        assert_eq!(hart_state.registers[10], 0x0000dead);
+        assert_eq!(hart_state.registers[11], 0xbaad8f77);
+
+    }
+
+    #[test]
+    fn test_csr_insn() {
+        let mut hart = HartState::new();
+        /*
+         * li x1, 0xdeadbeef
+         * csrw mscratch, x1
+         * csrc mscratch, 0x1f
+         * li x2, 0xbaadf00d
+         * csrrw x3, mscratch, x2
+         */
+        let mut mem = memories::VecMemory::new(vec![
+            0xdeadc0b7, 0xeef08093, 0x34009073, 0x340ff073, 0xbaadf137, 0x00d10113, 0x340111f3,
+        ]);
+
+        hart.pc = 0;
+
+        let mut executor = InstructionExecutor {
+            hart_state: &mut hart,
+            mem: &mut mem,
+        };
+
+        run_insns(&mut executor, 0x1c);
+
+        assert_eq!(hart.registers[1], 0xdeadbeef);
+        assert_eq!(hart.registers[2], 0xbaadf00d);
+        assert_eq!(hart.registers[3], 0xdeadbee0);
     }
 }
