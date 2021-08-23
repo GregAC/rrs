@@ -7,12 +7,12 @@
 //! Containts the building blocks for a RISC-V ISS. The seperate rrs-cli uses rrs-lib to implement
 //! a CLI driven ISS.
 
+pub mod csrs;
 pub mod instruction_executor;
 pub mod instruction_formats;
 pub mod instruction_string_outputter;
 pub mod memories;
 pub mod process_instruction;
-pub mod csrs;
 
 use downcast_rs::{impl_downcast, Downcast};
 
@@ -92,12 +92,24 @@ pub trait InstructionProcessor {
 
     fn process_fence(&mut self, dec_insn: instruction_formats::IType) -> Self::InstructionResult;
 
-    fn process_csrrw(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
-    fn process_csrrs(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
-    fn process_csrrc(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
-    fn process_csrrwi(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
-    fn process_csrrsi(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
-    fn process_csrrci(&mut self, dec_insn: instruction_formats::ITypeCSR) -> Self::InstructionResult;
+    fn process_csrrw(&mut self, dec_insn: instruction_formats::ITypeCSR)
+        -> Self::InstructionResult;
+    fn process_csrrs(&mut self, dec_insn: instruction_formats::ITypeCSR)
+        -> Self::InstructionResult;
+    fn process_csrrc(&mut self, dec_insn: instruction_formats::ITypeCSR)
+        -> Self::InstructionResult;
+    fn process_csrrwi(
+        &mut self,
+        dec_insn: instruction_formats::ITypeCSR,
+    ) -> Self::InstructionResult;
+    fn process_csrrsi(
+        &mut self,
+        dec_insn: instruction_formats::ITypeCSR,
+    ) -> Self::InstructionResult;
+    fn process_csrrci(
+        &mut self,
+        dec_insn: instruction_formats::ITypeCSR,
+    ) -> Self::InstructionResult;
 }
 
 /// State of a single RISC-V hart (hardware thread)
@@ -110,7 +122,7 @@ pub struct HartState {
     /// to `None` if latest instruction did not write a register.
     pub last_register_write: Option<usize>,
 
-    pub csr_set: csrs::CSRSet
+    pub csr_set: csrs::CSRSet,
 }
 
 impl HartState {
@@ -119,7 +131,7 @@ impl HartState {
             registers: [0; 32],
             pc: 0,
             last_register_write: None,
-            csr_set: csrs::CSRSet::default()
+            csr_set: csrs::CSRSet::default(),
         }
     }
 
@@ -268,7 +280,6 @@ mod tests {
         assert_eq!(hart_state.registers[9], 0xffffffad);
         assert_eq!(hart_state.registers[10], 0x0000dead);
         assert_eq!(hart_state.registers[11], 0xbaad8f77);
-
     }
 
     #[test]

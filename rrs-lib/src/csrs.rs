@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{CSR};
+use super::CSR;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryFrom;
 
@@ -92,7 +92,7 @@ pub enum CSRAddr {
 pub enum PrivLevel {
     U = 0,
     S = 1,
-    M = 3
+    M = 3,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
@@ -100,12 +100,12 @@ pub enum PrivLevel {
 pub enum MisaMXL {
     XLen32 = 1,
     XLen64 = 2,
-    XLen128 = 3
+    XLen128 = 3,
 }
 
 #[derive(Default)]
 pub struct Generic {
-    pub val: u32
+    pub val: u32,
 }
 
 impl CSR for Generic {
@@ -121,15 +121,15 @@ impl CSR for Generic {
 pub struct MIsa {
     pub mxl: MisaMXL,
     pub i: bool,
-    pub m: bool
+    pub m: bool,
 }
 
 impl Default for MIsa {
     fn default() -> Self {
         MIsa {
             mxl: MisaMXL::XLen32,
-            i : true,
-            m : true
+            i: true,
+            m: true,
         }
     }
 }
@@ -148,21 +148,17 @@ impl CSR for MIsa {
         read_data
     }
 
-    fn write(&mut self, _val: u32) {
-    }
+    fn write(&mut self, _val: u32) {}
 }
 
 pub struct MVendorID {
     pub bank: u32,
-    pub offset: u32
+    pub offset: u32,
 }
 
 impl Default for MVendorID {
     fn default() -> Self {
-        MVendorID {
-            bank: 0,
-            offset: 0
-        }
+        MVendorID { bank: 0, offset: 0 }
     }
 }
 
@@ -171,8 +167,7 @@ impl CSR for MVendorID {
         (self.bank & 0x7f) | ((self.offset & 0x1ffffff) << 7)
     }
 
-    fn write(&mut self, _val: u32) {
-    }
+    fn write(&mut self, _val: u32) {}
 }
 
 pub struct MStatus {
@@ -186,7 +181,7 @@ impl Default for MStatus {
         MStatus {
             mie: false,
             mpie: true,
-            mpp: PrivLevel::M
+            mpp: PrivLevel::M,
         }
     }
 }
@@ -219,14 +214,14 @@ impl CSR for MStatus {
 
 pub struct MTVec {
     pub base: u32,
-    pub vectored_mode: bool
+    pub vectored_mode: bool,
 }
 
 impl Default for MTVec {
     fn default() -> Self {
         MTVec {
             base: 0,
-            vectored_mode: false
+            vectored_mode: false,
         }
     }
 }
@@ -251,7 +246,7 @@ impl CSR for MTVec {
 pub struct MIx {
     pub external: bool,
     pub timer: bool,
-    pub software: bool
+    pub software: bool,
 }
 
 impl Default for MIx {
@@ -259,7 +254,7 @@ impl Default for MIx {
         MIx {
             external: false,
             timer: false,
-            software: false
+            software: false,
         }
     }
 }
@@ -292,14 +287,14 @@ impl CSR for MIx {
 
 pub struct MCountInhibit {
     pub cycle: bool,
-    pub instret: bool
+    pub instret: bool,
 }
 
 impl Default for MCountInhibit {
     fn default() -> Self {
         MCountInhibit {
             cycle: false,
-            instret: false
+            instret: false,
         }
     }
 }
@@ -343,13 +338,13 @@ pub enum Cause {
 }
 
 pub struct MCause {
-    pub cause: Cause
+    pub cause: Cause,
 }
 
 impl Default for MCause {
     fn default() -> Self {
         MCause {
-            cause: Cause::try_from(0).unwrap()
+            cause: Cause::try_from(0).unwrap(),
         }
     }
 }
@@ -417,7 +412,9 @@ impl CSRSet {
             CSRAddr::mcycle => &mut self.mcycle,
             CSRAddr::minstret => &mut self.minstret,
             CSRAddr::mcountinhibit => &mut self.mcountinhibit,
-            _ => {return None;}
+            _ => {
+                return None;
+            }
         })
     }
 }
@@ -428,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_mvendorid() {
-        let mut csr_set  = CSRSet::default();
+        let mut csr_set = CSRSet::default();
 
         csr_set.mvendorid.bank = 0x5a;
         csr_set.mvendorid.offset = 0xabcd;
@@ -438,7 +435,7 @@ mod tests {
 
     #[test]
     fn test_misa() {
-        let mut csr_set  = CSRSet::default();
+        let mut csr_set = CSRSet::default();
 
         let misa = csr_set.get_csr(CSRAddr::misa.into()).unwrap();
         assert_eq!(misa.read(), 0x40001100);

@@ -96,7 +96,7 @@ pub struct ITypeCSR {
     pub csr: u32,
     pub rs1: usize,
     pub funct3: u32,
-    pub rd: usize
+    pub rd: usize,
 }
 
 impl ITypeCSR {

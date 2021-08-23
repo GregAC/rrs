@@ -18,9 +18,9 @@
 //! );
 //! ```
 
+use super::csrs::CSRAddr;
 use super::instruction_formats;
 use super::InstructionProcessor;
-use super::csrs::CSRAddr;
 use paste::paste;
 use std::convert::TryFrom;
 
@@ -152,7 +152,7 @@ macro_rules! string_out_for_store_ops {
 fn csr_string_name(csr_addr: u32) -> String {
     match CSRAddr::try_from(csr_addr) {
         Ok(csr) => format!("{:?}", csr),
-        Err(_) => format!("0x{:03x}", csr_addr)
+        Err(_) => format!("0x{:03x}", csr_addr),
     }
 }
 

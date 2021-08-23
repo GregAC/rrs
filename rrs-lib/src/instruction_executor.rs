@@ -93,12 +93,20 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         self.hart_state.write_register(dec_insn.rd, result);
     }
 
-    fn execute_csr_op<F>(&mut self, dec_insn: instruction_formats::ITypeCSR, use_imm: bool, op: F) -> Result<(), InstructionException>
+    fn execute_csr_op<F>(
+        &mut self,
+        dec_insn: instruction_formats::ITypeCSR,
+        use_imm: bool,
+        op: F,
+    ) -> Result<(), InstructionException>
     where
         F: Fn(u32, u32) -> u32,
     {
         // TODO: Neater way to deal with illegal instruction? Need instruction bits here and PC
-        let old_csr = self.hart_state.read_csr(dec_insn.csr).ok_or(InstructionException::IllegalInstruction(0, 0))?;
+        let old_csr = self
+            .hart_state
+            .read_csr(dec_insn.csr)
+            .ok_or(InstructionException::IllegalInstruction(0, 0))?;
 
         let a = if use_imm {
             dec_insn.rs1 as u32
