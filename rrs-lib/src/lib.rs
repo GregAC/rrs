@@ -277,12 +277,16 @@ mod tests {
         /*
          * li x1, 0xdeadbeef
          * csrw mscratch, x1
-         * csrc mscratch, 0x1f
-         * li x2, 0xbaadf00d
-         * csrrw x3, mscratch, x2
+         * csrrc x2, mscratch, 0x1f
+         * li x3, 0xbaadf00d
+         * csrrw x4, mscratch, x3
+         * li x5, 0x1234abc0
+         * csrw mtval, x5
+         * csrrs x6, mtval, 0x1
          */
         let mut mem = memories::VecMemory::new(vec![
-            0xdeadc0b7, 0xeef08093, 0x34009073, 0x340ff073, 0xbaadf137, 0x00d10113, 0x340111f3,
+            0xdeadc0b7, 0xeef08093, 0x34009073, 0x340ff173, 0xbaadf1b7, 0x00d18193, 0x34019273,
+            0x1234b2b7, 0xbc028293, 0x30529073, 0x3050e373,
         ]);
 
         hart.pc = 0;
@@ -292,10 +296,17 @@ mod tests {
             mem: &mut mem,
         };
 
-        run_insns(&mut executor, 0x1c);
+        run_insns(&mut executor, 0x2c);
 
         assert_eq!(hart.registers[1], 0xdeadbeef);
-        assert_eq!(hart.registers[2], 0xbaadf00d);
-        assert_eq!(hart.registers[3], 0xdeadbee0);
+        assert_eq!(hart.registers[2], 0xdeadbeef);
+        assert_eq!(hart.registers[3], 0xbaadf00d);
+        assert_eq!(hart.registers[4], 0xdeadbee0);
+        assert_eq!(hart.registers[5], 0x1234abc0);
+        assert_eq!(hart.registers[6], 0x1234abc0);
+
+        assert_eq!(hart.csr_set.mscratch.val, 0xbaadf00d);
+        assert_eq!(hart.csr_set.mtvec.base, 0x1234abc0);
+        assert_eq!(hart.csr_set.mtvec.vectored_mode, true);
     }
 }
