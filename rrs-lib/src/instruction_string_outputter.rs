@@ -156,7 +156,7 @@ fn csr_string_name(csr_addr: u32) -> String {
     }
 }
 
-macro_rules! string_out_for_csr_op {
+macro_rules! string_out_for_csr_rr_op {
     ($name:ident) => {
         paste! {
             fn [<process_ $name>](
@@ -168,6 +168,11 @@ macro_rules! string_out_for_csr_op {
             }
         }
 
+    };
+}
+
+macro_rules! string_out_for_csr_ri_op {
+    ($name:ident) => {
         paste! {
             fn [<process_ $name i>](
                 &mut self,
@@ -183,7 +188,8 @@ macro_rules! string_out_for_csr_op {
 macro_rules! string_out_for_csr_ops {
     ($($name:ident),*) => {
         $(
-            string_out_for_csr_op! {$name}
+            string_out_for_csr_rr_op! {$name}
+            string_out_for_csr_ri_op! {$name}
         )*
     };
 }
@@ -239,7 +245,26 @@ impl InstructionProcessor for InstructionStringOutputter {
         String::from("fence")
     }
 
-    string_out_for_csr_ops! {csrrw, csrrs, csrrc}
+    string_out_for_csr_ops! {csrrs, csrrc}
+    string_out_for_csr_ri_op! {csrrw}
+
+    fn process_csrrw(
+        &mut self,
+        dec_insn: instruction_formats::ITypeCSR,
+    ) -> Self::InstructionResult {
+        let csr = CSRAddr::try_from(dec_insn.csr);
+
+        if csr == Ok(CSRAddr::cycle) && dec_insn.rd == 0 && dec_insn.rs1 == 0 {
+            String::from("unimp")
+        } else {
+            format!(
+                "csrrw x{}, {}, x{}",
+                dec_insn.rd,
+                csr_string_name(dec_insn.csr),
+                dec_insn.rs1
+            )
+        }
+    }
 
     fn process_mret(&mut self) -> Self::InstructionResult {
         String::from("mret")
@@ -276,6 +301,7 @@ mod tests {
             0x18061323, 0x0b382523, 0x034684b3, 0x03679f33, 0x0324bbb3, 0x03d9a233, 0x03f549b3,
             0x02ee5133, 0x02a6e9b3, 0x02c976b3, 0xabc0000f, 0x30069573, 0x3411a973, 0x34483ff3,
             0x3409d9f3, 0x30556c73, 0x3046faf3, 0x00000073, 0x00100073, 0x10500073, 0x30200073,
+            0xc0001073,
         ];
 
         assert_eq!(
@@ -564,6 +590,11 @@ mod tests {
         assert_eq!(
             process_instruction(&mut outputter, test_insns[55]),
             Some(String::from("mret"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[56]),
+            Some(String::from("unimp"))
         );
     }
 }

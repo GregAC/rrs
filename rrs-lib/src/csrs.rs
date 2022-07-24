@@ -89,6 +89,7 @@ pub enum CSRAddr {
     mhpmevent29 = 0x33d,
     mhpmevent30 = 0x33e,
     mhpmevent31 = 0x33f,
+    cycle = 0xc00,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
