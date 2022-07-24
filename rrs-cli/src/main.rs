@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use clap::{clap_app, ArgMatches};
-use rrs_lib::instruction_executor::InstructionExecutor;
+use rrs_lib::instruction_executor::{InstructionExecutor, InstructionTrap};
 use rrs_lib::instruction_string_outputter::InstructionStringOutputter;
 use rrs_lib::memories;
 use rrs_lib::memories::{MemorySpace, VecMemory};
@@ -234,7 +234,20 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
         }
 
         // Execute instruction
-        executor.step().expect("Exception during execution");
+        if let Err(trap) = executor.step() {
+            if let Some(log_file) = &mut sim_environment.log_file {
+                let log_line = match trap {
+                    InstructionTrap::Exception(cause, val) => {
+                        format!("[{:?} Exception, value:{:08x}]", cause, val)
+                    }
+                    InstructionTrap::Interrupt(irq) => format!("[Interrupt {:}]", irq),
+                };
+
+                writeln!(log_file, "{} @ PC {:08x}", log_line, executor.hart_state.pc)
+                    .expect("Log file write failed");
+            }
+            executor.handle_trap(trap);
+        }
 
         insn_count += 1;
 
@@ -253,7 +266,7 @@ fn run_sim(sim_environment: &mut SimEnvironment) {
                 // Output register written by instruction to log if it wrote to one
                 writeln!(
                     log_file,
-                    "x{} = {:08x}",
+                    "\tx{} = {:08x}",
                     reg_index, executor.hart_state.registers[reg_index]
                 )
                 .expect("Log file write failed");
@@ -282,5 +295,5 @@ fn main() {
         }
     };
 
-    run_sim(&mut sim_environment)
+    run_sim(&mut sim_environment);
 }

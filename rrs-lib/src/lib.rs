@@ -122,6 +122,7 @@ pub struct HartState {
     /// to `None` if latest instruction did not write a register.
     pub last_register_write: Option<usize>,
 
+    pub priv_level: csrs::PrivLevel,
     pub csr_set: csrs::CSRSet,
 }
 
@@ -131,6 +132,7 @@ impl HartState {
             registers: [0; 32],
             pc: 0,
             last_register_write: None,
+            priv_level: csrs::PrivLevel::M,
             csr_set: csrs::CSRSet::default(),
         }
     }
@@ -215,7 +217,8 @@ impl_downcast!(Memory);
 
 #[cfg(test)]
 mod tests {
-    use super::instruction_executor::{InstructionException, InstructionExecutor};
+    use super::csrs::ExceptionCause;
+    use super::instruction_executor::{InstructionExecutor, InstructionTrap};
     use super::instruction_string_outputter::InstructionStringOutputter;
     use super::*;
 
@@ -252,7 +255,7 @@ mod tests {
             0x1234b137, 0xbcd10113, 0xf387e1b7, 0x3aa18193, 0xbed892b7, 0x7ac28293, 0x003100b3,
             0xf4e0e213, 0x02120a63, 0x00121463, 0x1542c093, 0x00c0036f, 0x0020f0b3, 0x402080b3,
             0x00000397, 0x02838393, 0x0003a403, 0x00638483, 0x0023d503, 0x00139223, 0x0043a583,
-            0x00000000, 0x00000000, 0x00000000, 0xdeadbeef, 0xbaadf00d,
+            0xdeadfaa1, 0x00000000, 0x00000000, 0xdeadbeef, 0xbaadf00d,
         ]);
 
         hart_state.pc = 0;
@@ -266,7 +269,10 @@ mod tests {
 
         assert_eq!(
             executor.step(),
-            Err(InstructionException::IllegalInstruction(0x54, 0))
+            Err(InstructionTrap::Exception(
+                ExceptionCause::IllegalInstruction,
+                0xdeadfaa1
+            ))
         );
 
         assert_eq!(hart_state.registers[1], 0x05bc8f77);

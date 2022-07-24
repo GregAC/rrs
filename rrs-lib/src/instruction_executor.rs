@@ -14,7 +14,8 @@
 //! ```
 //! use rrs_lib::HartState;
 //! use rrs_lib::memories::VecMemory;
-//! use rrs_lib::instruction_executor::{InstructionExecutor, InstructionException};
+//! use rrs_lib::instruction_executor::{InstructionExecutor, InstructionTrap};
+//! use rrs_lib::csrs::ExceptionCause;
 //!
 //! let mut hart = HartState::new();
 //! // Memory contains these instructions:
@@ -37,23 +38,29 @@
 //! assert_eq!(executor.step(), Ok(()));
 //! assert_eq!(executor.hart_state.registers[1], 0x05bc9000);
 //! // Memory only contains three instructions so next step will produce a fetch error
-//! assert_eq!(executor.step(), Err(InstructionException::FetchError(0xc)));
+//! assert_eq!(
+//!     executor.step(),
+//!     Err(InstructionTrap::Exception(
+//!         ExceptionCause::InstructionAccessFault,
+//!         0x0
+//!     ))
+//! );
 //! ```
 
+use super::csrs::{CSRAddr, ExceptionCause, MIx, PrivLevel};
 use super::instruction_formats;
 use super::process_instruction;
+use super::CSR;
 use super::{HartState, InstructionProcessor, MemAccessSize, Memory};
 use paste::paste;
 
-/// Different exceptions that can occur during instruction execution
+/// Different traps that can occur during instruction execution
 #[derive(Debug, PartialEq)]
-pub enum InstructionException {
-    // TODO: Better to name the fields?
-    IllegalInstruction(u32, u32),
-    FetchError(u32),
-    LoadAccessFault(u32),
-    StoreAccessFault(u32),
-    AlignmentFault(u32),
+pub enum InstructionTrap {
+    /// Trap is a synchronous exception, with a particular cause, u32 is used as mtval.
+    Exception(ExceptionCause, u32),
+    /// Trap is an asynchronous interrupt with a particular number.
+    Interrupt(u32),
 }
 
 /// An `InstructionProcessor` that execute instructions, updating `hart_state` as appropriate.
@@ -98,15 +105,17 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         dec_insn: instruction_formats::ITypeCSR,
         use_imm: bool,
         op: F,
-    ) -> Result<(), InstructionException>
+    ) -> Result<(), InstructionTrap>
     where
         F: Fn(u32, u32) -> u32,
     {
-        // TODO: Neater way to deal with illegal instruction? Need instruction bits here and PC
         let old_csr = self
             .hart_state
             .read_csr(dec_insn.csr)
-            .ok_or(InstructionException::IllegalInstruction(0, 0))?;
+            .ok_or(InstructionTrap::Exception(
+                ExceptionCause::IllegalInstruction,
+                0,
+            ))?;
 
         let a = if use_imm {
             dec_insn.rs1 as u32
@@ -147,7 +156,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         dec_insn: instruction_formats::IType,
         size: MemAccessSize,
         signed: bool,
-    ) -> Result<(), InstructionException> {
+    ) -> Result<(), InstructionTrap> {
         let addr = self
             .hart_state
             .read_register(dec_insn.rs1)
@@ -162,14 +171,20 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         };
 
         if (addr & align_mask) != 0x0 {
-            return Err(InstructionException::AlignmentFault(addr));
+            return Err(InstructionTrap::Exception(
+                ExceptionCause::LoadAddressMisaligned,
+                addr,
+            ));
         }
 
         // Attempt to read data from memory, returning a LoadAccessFault as an error if it is not.
         let mut load_data = match self.mem.read_mem(addr, size) {
             Some(d) => d,
             None => {
-                return Err(InstructionException::LoadAccessFault(addr));
+                return Err(InstructionTrap::Exception(
+                    ExceptionCause::LoadAccessFault,
+                    addr,
+                ));
             }
         };
 
@@ -191,7 +206,7 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         &mut self,
         dec_insn: instruction_formats::SType,
         size: MemAccessSize,
-    ) -> Result<(), InstructionException> {
+    ) -> Result<(), InstructionTrap> {
         let addr = self
             .hart_state
             .read_register(dec_insn.rs1)
@@ -207,27 +222,62 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
         // Determine if address is aligned to size, returning an AlignmentFault as an error if it
         // is not.
         if (addr & align_mask) != 0x0 {
-            return Err(InstructionException::AlignmentFault(addr));
+            return Err(InstructionTrap::Exception(
+                ExceptionCause::StoreAddressMisaligned,
+                addr,
+            ));
         }
 
         // Write store data to memory, returning a StoreAccessFault as an error if write fails.
         if self.mem.write_mem(addr, size, data) {
             Ok(())
         } else {
-            Err(InstructionException::StoreAccessFault(addr))
+            Err(InstructionTrap::Exception(
+                ExceptionCause::StoreAccessFault,
+                addr,
+            ))
+        }
+    }
+
+    pub fn pending_interrupt(&self) -> Option<u32> {
+        if self.hart_state.csr_set.mstatus.mie {
+            let pending_interrupt_bits =
+                self.hart_state.csr_set.mip.read() & self.hart_state.csr_set.mie.read();
+
+            if pending_interrupt_bits != 0 {
+                let mut pending_interrupts: MIx = Default::default();
+                pending_interrupts.write(pending_interrupt_bits);
+
+                // TODO: Add constants/enum for interrupt numbers?
+                if pending_interrupts.external {
+                    Some(11)
+                } else if pending_interrupts.software {
+                    Some(3)
+                } else if pending_interrupts.timer {
+                    Some(7)
+                } else {
+                    panic!("Unknown interrupt bit set {:08x}", pending_interrupt_bits)
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 
     /// Execute instruction pointed to by `hart_state.pc`
     ///
     /// Returns `Ok` where instruction execution was successful. `Err` with the relevant
-    /// [InstructionException] is returned when the instruction execution causes an exception.
-    pub fn step(&mut self) -> Result<(), InstructionException> {
+    /// [InstructionTrap] is returned when the instruction execution causes a trap.
+    pub fn step(&mut self) -> Result<(), InstructionTrap> {
         self.hart_state.last_register_write = None;
 
-        // Fetch next instruction from memory
-        if let Some(next_insn) = self.mem.read_mem(self.hart_state.pc, MemAccessSize::Word) {
-            // Execute the instruction
+        if let Some(irq) = self.pending_interrupt() {
+            Err(InstructionTrap::Interrupt(irq))
+        } else if let Some(next_insn) = self.mem.read_mem(self.hart_state.pc, MemAccessSize::Word) {
+            // Fetch next instruction from memory and eecute the instruction if fetch was
+            // successful
             let step_result = process_instruction(self, next_insn);
 
             match step_result {
@@ -238,17 +288,48 @@ impl<'a, M: Memory> InstructionExecutor<'a, M> {
                     }
                     Ok(())
                 }
-                // Instruction produced an error so return it
-                Some(Err(e)) => Err(e),
-                // Instruction decode failed so return an IllegalInstruction as an error
-                None => Err(InstructionException::IllegalInstruction(
-                    self.hart_state.pc,
+                // Instruction produced an illegal instruction error or decode failed so return an
+                // IllegalInstruction as an error, supplying instruction bits
+                Some(Err(InstructionTrap::Exception(ExceptionCause::IllegalInstruction, _)))
+                | None => Err(InstructionTrap::Exception(
+                    ExceptionCause::IllegalInstruction,
                     next_insn,
                 )),
+                // Instruction produced an error so return it
+                Some(Err(e)) => Err(e),
             }
         } else {
             // Return a FetchError as an error if instruction fetch fails
-            Err(InstructionException::FetchError(self.hart_state.pc))
+            // TODO: Give PC as mtval?
+            Err(InstructionTrap::Exception(
+                ExceptionCause::InstructionAccessFault,
+                0,
+            ))
+        }
+    }
+
+    pub fn handle_trap(&mut self, trap: InstructionTrap) {
+        self.hart_state.csr_set.mepc.val = self.hart_state.pc;
+        self.hart_state.csr_set.mstatus.mpie = self.hart_state.csr_set.mstatus.mie;
+        self.hart_state.csr_set.mstatus.mie = false;
+        self.hart_state.csr_set.mstatus.mpp = self.hart_state.priv_level;
+
+        match trap {
+            InstructionTrap::Interrupt(interrupt_num) => {
+                self.hart_state.csr_set.mcause.cause = interrupt_num | 0x80000000;
+                self.hart_state.csr_set.mtval.val = 0;
+
+                if self.hart_state.csr_set.mtvec.vectored_mode {
+                    self.hart_state.pc = self.hart_state.csr_set.mtvec.base + interrupt_num * 4;
+                } else {
+                    self.hart_state.pc = self.hart_state.csr_set.mtvec.base;
+                }
+            }
+            InstructionTrap::Exception(cause, val) => {
+                self.hart_state.csr_set.mcause.cause = cause.into();
+                self.hart_state.csr_set.mtval.val = val;
+                self.hart_state.pc = self.hart_state.csr_set.mtvec.base;
+            }
         }
     }
 }
@@ -399,7 +480,7 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     /// Result is `Ok` when instruction execution is successful. `Ok(true) indicates the
     /// instruction updated the PC and Ok(false) indicates it did not (so the PC must be
     /// incremented to execute the next instruction).
-    type InstructionResult = Result<bool, InstructionException>;
+    type InstructionResult = Result<bool, InstructionTrap>;
 
     make_alu_op_fns! {add, |a, b| a.wrapping_add(b)}
     make_alu_op_reg_fn! {sub, |a, b| a.wrapping_sub(b)}

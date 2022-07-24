@@ -6,6 +6,10 @@ use super::CSR;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryFrom;
 
+// TODO: May be useful to have generic functionality to take a u32 and construct a CSR from it. Can
+// manually create CSR then use write to do this, can we do something more generic (e.g. that uses
+// write)?
+
 #[derive(PartialEq, Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
 #[repr(u32)]
 #[allow(non_camel_case_types)]
@@ -322,10 +326,7 @@ impl CSR for MCountInhibit {
 
 #[derive(PartialEq, Clone, Copy, Debug, IntoPrimitive, TryFromPrimitive)]
 #[repr(u32)]
-pub enum Cause {
-    MachineSoftwareInterrupt = 0x10000003,
-    MachineTimerInterrupt = 0x10000007,
-    MachineExternalInterrupt = 0x1000000b,
+pub enum ExceptionCause {
     InstructionAddressMisaligned = 0x0,
     InstructionAccessFault = 0x1,
     IllegalInstruction = 0x2,
@@ -338,24 +339,31 @@ pub enum Cause {
 }
 
 pub struct MCause {
-    pub cause: Cause,
+    pub cause: u32,
 }
 
 impl Default for MCause {
     fn default() -> Self {
-        MCause {
-            cause: Cause::try_from(0).unwrap(),
-        }
+        MCause { cause: 0 }
     }
 }
 
 impl CSR for MCause {
     fn read(&self) -> u32 {
-        self.cause.into()
+        self.cause
     }
 
     fn write(&mut self, val: u32) {
-        self.cause = Cause::try_from(val).unwrap_or(Cause::IllegalInstruction);
+        if val & 0x80000000 != 0 {
+            // For interrupt causes accept any value
+            self.cause = val;
+        } else {
+            // For exception interrupt causes only accept defined ones, cause becomes
+            // IllegalInstruction for any undefined values.
+            self.cause = ExceptionCause::try_from(val)
+                .unwrap_or(ExceptionCause::IllegalInstruction)
+                .into();
+        }
     }
 }
 
@@ -465,10 +473,12 @@ mod tests {
 
         let mcause = csr_set.get_csr(CSRAddr::mcause.into()).unwrap();
         assert_eq!(mcause.read(), 0);
-        mcause.write(Cause::ECallMMode.into());
-        assert_eq!(mcause.read(), Cause::ECallMMode.into());
+        mcause.write(ExceptionCause::ECallMMode.into());
+        assert_eq!(mcause.read(), ExceptionCause::ECallMMode.into());
         mcause.write(0xffffffff);
-        assert_eq!(mcause.read(), Cause::IllegalInstruction.into());
+        assert_eq!(mcause.read(), 0xffffffff);
+        mcause.write(0x7fffffff);
+        assert_eq!(mcause.read(), ExceptionCause::IllegalInstruction.into());
     }
 
     #[test]
