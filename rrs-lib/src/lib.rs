@@ -110,6 +110,11 @@ pub trait InstructionProcessor {
         &mut self,
         dec_insn: instruction_formats::ITypeCSR,
     ) -> Self::InstructionResult;
+
+    fn process_ecall(&mut self) -> Self::InstructionResult;
+    fn process_ebreak(&mut self) -> Self::InstructionResult;
+    fn process_wfi(&mut self) -> Self::InstructionResult;
+    fn process_mret(&mut self) -> Self::InstructionResult;
 }
 
 /// State of a single RISC-V hart (hardware thread)

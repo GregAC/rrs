@@ -240,6 +240,22 @@ impl InstructionProcessor for InstructionStringOutputter {
     }
 
     string_out_for_csr_ops! {csrrw, csrrs, csrrc}
+
+    fn process_mret(&mut self) -> Self::InstructionResult {
+        String::from("mret")
+    }
+
+    fn process_wfi(&mut self) -> Self::InstructionResult {
+        String::from("wfi")
+    }
+
+    fn process_ecall(&mut self) -> Self::InstructionResult {
+        String::from("ecall")
+    }
+
+    fn process_ebreak(&mut self) -> Self::InstructionResult {
+        String::from("ebreak")
+    }
 }
 
 #[cfg(test)]
@@ -259,7 +275,7 @@ mod tests {
             0x0398f863, 0x04c18983, 0x07841b83, 0x1883a403, 0x03af4b03, 0x15acd883, 0x0d320923,
             0x18061323, 0x0b382523, 0x034684b3, 0x03679f33, 0x0324bbb3, 0x03d9a233, 0x03f549b3,
             0x02ee5133, 0x02a6e9b3, 0x02c976b3, 0xabc0000f, 0x30069573, 0x3411a973, 0x34483ff3,
-            0x3409d9f3, 0x30556c73, 0x3046faf3,
+            0x3409d9f3, 0x30556c73, 0x3046faf3, 0x00000073, 0x00100073, 0x10500073, 0x30200073,
         ];
 
         assert_eq!(
@@ -528,6 +544,26 @@ mod tests {
         assert_eq!(
             process_instruction(&mut outputter, test_insns[51]),
             Some(String::from("csrrci x21, mie, 0x0d"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[52]),
+            Some(String::from("ecall"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[53]),
+            Some(String::from("ebreak"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[54]),
+            Some(String::from("wfi"))
+        );
+
+        assert_eq!(
+            process_instruction(&mut outputter, test_insns[55]),
+            Some(String::from("mret"))
         );
     }
 }

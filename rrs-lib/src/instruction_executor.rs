@@ -565,4 +565,34 @@ impl<'a, M: Memory> InstructionProcessor for InstructionExecutor<'a, M> {
     make_csr_op_fns! {csrrw, |_old_csr, a| a}
     make_csr_op_fns! {csrrs, |old_csr, a| old_csr | a}
     make_csr_op_fns! {csrrc, |old_csr, a| old_csr & !a}
+
+    fn process_mret(&mut self) -> Self::InstructionResult {
+        self.hart_state.pc = self.hart_state.csr_set.mepc.val;
+        self.hart_state.priv_level = self.hart_state.csr_set.mstatus.mpp;
+
+        match self.hart_state.csr_set.mstatus.mpp {
+            PrivLevel::M => {
+                self.hart_state.csr_set.mstatus.mie = self.hart_state.csr_set.mstatus.mpie;
+                self.hart_state.csr_set.mstatus.mpie = true;
+                self.hart_state.csr_set.mstatus.mpp = PrivLevel::M;
+            }
+            _ => {
+                panic!("mstatus.mpp should only be M mode");
+            }
+        }
+
+        Ok(true)
+    }
+
+    fn process_wfi(&mut self) -> Self::InstructionResult {
+        Ok(false)
+    }
+
+    fn process_ecall(&mut self) -> Self::InstructionResult {
+        Err(InstructionTrap::Exception(ExceptionCause::ECallMMode, 0))
+    }
+
+    fn process_ebreak(&mut self) -> Self::InstructionResult {
+        Err(InstructionTrap::Exception(ExceptionCause::Breakpoint, 0))
+    }
 }

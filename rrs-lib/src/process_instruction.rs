@@ -138,6 +138,19 @@ fn process_opcode_system<T: InstructionProcessor>(
     let dec_insn = instruction_formats::ITypeCSR::new(insn_bits);
 
     match dec_insn.funct3 {
+        0b000 => {
+            if dec_insn.rd != 0 || dec_insn.rs1 != 0 {
+                None
+            } else {
+                match dec_insn.csr {
+                    0b000000000000 => Some(processor.process_ecall()),
+                    0b000000000001 => Some(processor.process_ebreak()),
+                    0b000100000101 => Some(processor.process_wfi()),
+                    0b001100000010 => Some(processor.process_mret()),
+                    _ => None,
+                }
+            }
+        }
         0b001 => Some(processor.process_csrrw(dec_insn)),
         0b010 => Some(processor.process_csrrs(dec_insn)),
         0b011 => Some(processor.process_csrrc(dec_insn)),
